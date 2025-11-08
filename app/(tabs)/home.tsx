@@ -1,4 +1,5 @@
 import { CoughChart } from '@/components/CoughChart';
+import { Paper } from '@mui/material';
 import React from 'react';
 
 export default function HomePage() {
@@ -15,5 +16,9 @@ export default function HomePage() {
     { wet: 2, dry: 4 },
   ];
 
-  return <CoughChart counts={counts} labels={labels} breakdown={breakdown} />;
+  return (
+    <Paper sx={{ minHeight: '100%' }}>
+      <CoughChart counts={counts} labels={labels} breakdown={breakdown} />
+    </Paper>
+  );
 }

@@ -4,7 +4,7 @@ import HomeIcon from '@mui/icons-material/Home';
 import InfoIcon from '@mui/icons-material/Info';
 import MicIcon from '@mui/icons-material/Mic';
 import { BottomNavigation, BottomNavigationAction, Fab, Paper } from '@mui/material';
-import { Tabs, usePathname, useRouter, useSegments } from 'expo-router';
+import { Slot, usePathname, useRouter, useSegments } from 'expo-router';
 import React from 'react';
 
 // Define enum for tab names
@@ -40,17 +40,10 @@ export default function TabLayout() {
   };
 
   return (
-    <>
-      {/* Expo Router Tabs */}
-      <Tabs>
-        <Tabs.Screen name="index" options={{ title: 'Home' }} />
-        {/* <Tabs.Screen name="record" options={{ title: '' }} /> */}
-        <Tabs.Screen name="about" options={{ title: 'About' }} />
-      </Tabs>
-
+    <Paper sx={{ minHeight: '100%' }}>
       {/* Floating Record Button */}
       <Fab
-        onClick={() => router.replace('/record')} // use replace to avoid stacking modals
+        onClick={() => router.replace('/record')}
         style={{
           position: 'fixed',
           bottom: 40,
@@ -82,15 +75,19 @@ export default function TabLayout() {
             value={TabName.Home}
             icon={<HomeIcon />}
             sx={{ color: currentTab === TabName.Home ? themeColors.tint : 'gray' }}
+            onClick={() => router.replace('/')}
           />
           <BottomNavigationAction
             label="About"
             value={TabName.About}
             icon={<InfoIcon />}
             sx={{ color: currentTab === TabName.About ? themeColors.tint : 'gray' }}
+            onClick={() => router.replace('/about')}
           />
         </BottomNavigation>
       </Paper>
-    </>
+
+      <Slot />
+    </Paper>
   );
 }
