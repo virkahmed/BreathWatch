@@ -1,9 +1,8 @@
 import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import HomeIcon from '@mui/icons-material/Home';
 import InfoIcon from '@mui/icons-material/Info';
 import MicIcon from '@mui/icons-material/Mic';
-import { BottomNavigation, BottomNavigationAction, Fab, Paper } from '@mui/material';
+import { BottomNavigation, BottomNavigationAction, Box, Fab } from '@mui/material';
 import { Slot, usePathname, useRouter, useSegments } from 'expo-router';
 import React from 'react';
 
@@ -15,10 +14,10 @@ enum TabName {
 }
 
 export default function TabLayout() {
+  const themeColors = Colors.dark;
+
   const router = useRouter();
   const segments = useSegments(); // current route segments
-  const colorScheme = useColorScheme();
-  const themeColors = Colors[colorScheme ?? 'light'];
   const pathname = usePathname(); // e.g., '/', '/about', '/record'
 
   const currentTab: TabName = (() => {
@@ -40,10 +39,26 @@ export default function TabLayout() {
   };
 
   return (
-    <Paper sx={{ minHeight: '100%' }}>
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        backgroundColor: '#DDD6F3',
+        overflow: 'hidden',
+      }}
+    >
+      <Box
+        sx={{
+          flex: 1,
+          overflowY: 'auto',
+        }}
+      >
+        <Slot />
+      </Box>
+
       {/* Floating Record Button */}
       <Fab
-        onClick={() => router.replace('/record')}
+        // onClick={() => router.replace('/record')}
         style={{
           position: 'fixed',
           bottom: 40,
@@ -58,36 +73,32 @@ export default function TabLayout() {
       </Fab>
 
       {/* Bottom Navigation */}
-      <Paper
+      <BottomNavigation
+        value={currentTab}
+        onChange={handleChange}
         sx={{
           position: 'fixed',
           bottom: 0,
           left: 0,
           right: 0,
-          backgroundColor: themeColors.background,
           color: themeColors.text,
         }}
-        elevation={3}
       >
-        <BottomNavigation value={currentTab} onChange={handleChange} showLabels>
-          <BottomNavigationAction
-            label="Home"
-            value={TabName.Home}
-            icon={<HomeIcon />}
-            sx={{ color: currentTab === TabName.Home ? themeColors.tint : 'gray' }}
-            onClick={() => router.replace('/')}
-          />
-          <BottomNavigationAction
-            label="About"
-            value={TabName.About}
-            icon={<InfoIcon />}
-            sx={{ color: currentTab === TabName.About ? themeColors.tint : 'gray' }}
-            onClick={() => router.replace('/about')}
-          />
-        </BottomNavigation>
-      </Paper>
-
-      <Slot />
-    </Paper>
+        <BottomNavigationAction
+          // label="Home"
+          value={TabName.Home}
+          icon={<HomeIcon />}
+          sx={{ color: currentTab === TabName.Home ? themeColors.tint : 'gray' }}
+          onClick={() => router.replace('/')}
+        />
+        <BottomNavigationAction
+          // label="About"
+          value={TabName.About}
+          icon={<InfoIcon />}
+          sx={{ color: currentTab === TabName.About ? themeColors.tint : 'gray' }}
+          onClick={() => router.replace('/about')}
+        />
+      </BottomNavigation>
+    </Box>
   );
 }
