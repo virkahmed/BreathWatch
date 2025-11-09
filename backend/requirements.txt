@@ -1,0 +1,46 @@
+# FastAPI and web server
+# Using FastAPI 0.115.0 + Pydantic 2.8.2 for stable OpenAPI schema generation
+fastapi==0.115.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+httpx>=0.25.2
+websockets>=11.0
+
+# Audio processing libraries
+librosa==0.10.1
+soundfile==0.12.1  # Required by librosa for some formats
+noisereduce==3.0.0
+
+# Machine Learning and numerical computing
+# PyTorch for model inference (replaces onnxruntime)
+torch>=2.0.0
+numpy==1.24.3
+scipy==1.11.4
+
+# Data validation and serialization
+# Pydantic 2.8.2 is compatible with FastAPI 0.115.0
+pydantic==2.8.2
+
+# Environment variable management
+python-dotenv==1.0.0
+
+# Dedalus AI SDK
+dedalus-labs>=0.0.1
+
+# Testing (optional, for test_api.py)
+requests>=2.31.0
+
+# Note: Training dependencies removed - models are provided pre-trained
+# torch is listed above in ML section
+torchvision>=0.15.0
+torchaudio>=2.0.0
+scikit-learn>=1.3.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+tqdm>=4.65.0
+
+# Additional audio dependencies (installed via librosa but listed for clarity)
+# ffmpeg - system dependency, install separately:
+#   Windows: choco install ffmpeg
+#   macOS: brew install ffmpeg
+#   Linux: sudo apt-get install ffmpeg

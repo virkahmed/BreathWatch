@@ -1,0 +1,4 @@
+# Place your ONNX models here:
+# - cough_classifier.onnx
+# - respiratory_classifier.onnx
+
