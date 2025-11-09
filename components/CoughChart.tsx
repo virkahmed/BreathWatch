@@ -28,8 +28,10 @@ export const CoughChart: React.FC<CoughChartProps> = ({ counts, labels, breakdow
     <Box
       sx={{
         width: '100%',
+        minHeight: '100dvh',
         mx: 'auto',
-        my: 4,
+        my: 0,
+        pt: '50px',
         backgroundColor: themeColors.background,
         color: themeColors.text,
         fontFamily: Colors.typography.fontFamily,
@@ -86,7 +88,7 @@ export const CoughChart: React.FC<CoughChartProps> = ({ counts, labels, breakdow
                 {
                   data: [breakdown[selectedIndex].wet, breakdown[selectedIndex].dry],
                   label: 'Cough Distribution',
-                  color: themeColors.background,
+                  color: themeColors.text,
                 },
               ]}
               spacing={0.3}
