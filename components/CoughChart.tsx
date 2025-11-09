@@ -41,17 +41,21 @@ export const CoughChart: React.FC<CoughChartProps> = ({ counts, labels, breakdow
       }}
     >
       <Typography
-        variant="h6"
+        variant="h3"
         align="center"
         sx={{
           position: 'sticky',
           top: 0,
           zIndex: 10,
-          py: 2,
+          py: 3,
           mb: 3,
           background: `linear-gradient(to bottom, ${themeColors.background} 50%, transparent)`,
-          color: themeColors.text,
-          fontWeight: 600,
+          color: '#ffffff',
+          fontWeight: 800,
+          fontSize: { xs: '2rem', sm: '2.5rem', md: '3rem' },
+          fontFamily: "'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif",
+          letterSpacing: '-0.02em',
+          textShadow: `0 0 20px rgba(255, 255, 255, 0.3)`,
         }}
       >
         BreathWatch
@@ -144,8 +148,8 @@ export const CoughChart: React.FC<CoughChartProps> = ({ counts, labels, breakdow
         {/* Breakdown chart */}
         <Box>
           {selectedIndex === null ? (
-            <Typography variant="body1" align="center" sx={{ py: 10, color: themeColors.text }}>
-              Select a day
+            <Typography variant="body1" align="center" sx={{ py: 10, color: themeColors.text, opacity: 0.6 }}>
+              Click a bar above to see wet/dry breakdown
             </Typography>
           ) : breakdown && breakdown[selectedIndex] ? (
             <BarChart

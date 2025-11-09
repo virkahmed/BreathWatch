@@ -1,103 +1,171 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { Colors } from '@/constants/theme';
+import { Box, Typography, Paper, Divider } from '@mui/material';
+import React from 'react';
+import InfoIcon from '@mui/icons-material/Info';
+import ScienceIcon from '@mui/icons-material/Science';
+import SecurityIcon from '@mui/icons-material/Security';
+import HealthAndSafetyIcon from '@mui/icons-material/HealthAndSafety';
 
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Collapsible } from '@/components/ui/collapsible';
-import { IconSymbol } from '@/components/ui/icon-symbol';
+export default function AboutPage() {
+  const themeColors = Colors.dark;
 
-export default function TabTwoScreen() {
+  const features = [
+    {
+      icon: <ScienceIcon />,
+      title: 'Advanced AI Analysis',
+      description:
+        'Uses machine learning models to detect coughs and wheezing with high accuracy. Processes audio locally on your device for privacy and speed.',
+    },
+    {
+      icon: <SecurityIcon />,
+      title: 'Privacy First',
+      description:
+        'All audio processing happens on your device. Only summary data is sent to the backend for AI interpretation, keeping your audio recordings private.',
+    },
+    {
+      icon: <HealthAndSafetyIcon />,
+      title: 'Health Insights',
+      description:
+        'Get detailed analysis of your respiratory patterns, including cough frequency, wheeze detection, and AI-powered health interpretations.',
+    },
+  ];
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }
+    <Box
+      sx={{
+        minHeight: '100vh',
+        background: `linear-gradient(-45deg, ${themeColors.background} 25%, ${themeColors.backgroundGradient})`,
+        color: themeColors.text,
+        p: 3,
+      }}
     >
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Explore</ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful <ThemedText type="defaultSemiBold">react-native-reanimated</ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+        <InfoIcon sx={{ fontSize: 40, color: themeColors.bright }} />
+        <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.text }}>
+          About BreathWatch
+        </Typography>
+      </Box>
+
+      <Paper
+        sx={{
+          p: 3,
+          mb: 3,
+          background: `linear-gradient(-45deg, ${themeColors.secondary} 25%, ${themeColors.tertiary})`,
+          borderRadius: '20px',
+          boxShadow: `3px 3px 0 ${themeColors.text}`,
+        }}
+      >
+        <Typography variant="h6" sx={{ mb: 2, color: themeColors.text, fontWeight: 600 }}>
+          What is BreathWatch?
+        </Typography>
+        <Typography variant="body1" sx={{ color: themeColors.text, mb: 2 }}>
+          BreathWatch is a comprehensive respiratory health monitoring application that uses advanced audio analysis
+          technology to detect, track, and analyze coughs and wheezing patterns. Designed for both personal health
+          monitoring and clinical use, BreathWatch provides detailed insights into respiratory health.
+        </Typography>
+        <Typography variant="body1" sx={{ color: themeColors.text }}>
+          The app processes audio recordings in real-time, detecting respiratory events with high accuracy using
+          machine learning models. All processing happens locally on your device, ensuring your privacy while
+          providing powerful health insights.
+        </Typography>
+      </Paper>
+
+      <Paper
+        sx={{
+          p: 3,
+          mb: 3,
+          background: `linear-gradient(-45deg, ${themeColors.secondary} 25%, ${themeColors.tertiary})`,
+          borderRadius: '20px',
+          boxShadow: `3px 3px 0 ${themeColors.text}`,
+        }}
+      >
+        <Typography variant="h6" sx={{ mb: 2, color: themeColors.text, fontWeight: 600 }}>
+          Key Features
+        </Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {features.map((feature, index) => (
+            <Box key={index}>
+              <Box sx={{ display: 'flex', alignItems: 'start', gap: 2, mb: 1 }}>
+                <Box sx={{ color: themeColors.bright, mt: 0.5 }}>{feature.icon}</Box>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, color: themeColors.text, mb: 0.5 }}>
+                    {feature.title}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: themeColors.text, opacity: 0.9 }}>
+                    {feature.description}
+                  </Typography>
+                </Box>
+              </Box>
+              {index < features.length - 1 && (
+                <Divider sx={{ mt: 2, borderColor: themeColors.text, opacity: 0.2 }} />
+              )}
+            </Box>
+          ))}
+        </Box>
+      </Paper>
+
+      <Paper
+        sx={{
+          p: 3,
+          mb: 3,
+          background: `linear-gradient(-45deg, ${themeColors.secondary} 25%, ${themeColors.tertiary})`,
+          borderRadius: '20px',
+          boxShadow: `3px 3px 0 ${themeColors.text}`,
+        }}
+      >
+        <Typography variant="h6" sx={{ mb: 2, color: themeColors.text, fontWeight: 600 }}>
+          How It Works
+        </Typography>
+        <Box component="ol" sx={{ pl: 2, color: themeColors.text }}>
+          <li>
+            <Typography variant="body2" sx={{ color: themeColors.text, mb: 1 }}>
+              <strong>Record:</strong> Start a recording session using the microphone button. The app will process
+              audio in 10-minute chunks.
+            </Typography>
+          </li>
+          <li>
+            <Typography variant="body2" sx={{ color: themeColors.text, mb: 1 }}>
+              <strong>Process:</strong> Audio is processed locally using machine learning models to detect coughs
+              and wheezing in real-time.
+            </Typography>
+          </li>
+          <li>
+            <Typography variant="body2" sx={{ color: themeColors.text, mb: 1 }}>
+              <strong>Analyze:</strong> View real-time charts and statistics as your recording progresses. See
+              cough counts, wheeze detection, and quality metrics.
+            </Typography>
+          </li>
+          <li>
+            <Typography variant="body2" sx={{ color: themeColors.text }}>
+              <strong>Interpret:</strong> Get AI-powered health interpretations and recommendations based on your
+              respiratory patterns.
+            </Typography>
+          </li>
+        </Box>
+      </Paper>
+
+      <Paper
+        sx={{
+          p: 3,
+          background: `linear-gradient(-45deg, ${themeColors.secondary} 25%, ${themeColors.tertiary})`,
+          borderRadius: '20px',
+          boxShadow: `3px 3px 0 ${themeColors.text}`,
+        }}
+      >
+        <Typography variant="h6" sx={{ mb: 2, color: themeColors.text, fontWeight: 600 }}>
+          Version Information
+        </Typography>
+        <Typography variant="body2" sx={{ color: themeColors.text, mb: 1 }}>
+          <strong>Version:</strong> 1.0.0
+        </Typography>
+        <Typography variant="body2" sx={{ color: themeColors.text, mb: 1 }}>
+          <strong>Platform:</strong> Web, iOS, Android
+        </Typography>
+        <Typography variant="body2" sx={{ color: themeColors.text }}>
+          <strong>Privacy:</strong> All audio processing is done locally on your device. Only summary data is
+          transmitted for AI interpretation.
+        </Typography>
+      </Paper>
+    </Box>
   );
 }
-
-const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
-  },
-  titleContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-});

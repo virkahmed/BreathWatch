@@ -7,29 +7,25 @@ const tintColorLight = '#0a7ea4';
 const tintColorDark = '#fff';
 
 export const Colors = {
-  // light: {
-  //   text: '#11181C',
-  //   background: '#DDD6F3',
-  //   tint: tintColorLight,
-  //   icon: '#687076',
-  //   tabIconDefault: '#687076',
-  //   tabIconSelected: tintColorLight,
-  // },
   dark: {
-    text: '#e9ecef',
-    background: '#231C35',
-    backgroundGradient: '#242039',
-    secondary: '#2A2B47',
-    tertiary: '#6E5774',
-    bright: '#e9ecef',
+    text: '#f8f9fa',
+    background: '#0f0f23',
+    backgroundGradient: '#1a1a2e',
+    secondary: '#16213e',
+    tertiary: '#0f3460',
+    bright: '#00d4ff',
+    accent: '#7b2cbf',
+    success: '#06ffa5',
+    warning: '#ffbe0b',
+    error: '#ff006e',
     tint: tintColorLight,
-    icon: '#687076',
+    icon: '#a0a0a0',
     tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
+    tabIconSelected: '#00d4ff',
   },
   typography: {
     fontFamily:
-      '"Helvetica Neue", Helvetica, Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
+      '"Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
   },
 };
 

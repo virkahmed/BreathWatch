@@ -5,6 +5,7 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { useAudioRecorder, ChunkProcessResponse } from '@/hooks/useAudioRecorder';
 import { getFinalSummary, NightlySummary } from '@/services/api';
+import { saveRecordingToHistory, getSettings } from '@/services/storage';
 
 interface RecordingContextType {
   recordingState: ReturnType<typeof useAudioRecorder>['recordingState'];
@@ -45,6 +46,12 @@ export function RecordingProvider({ children }: { children: ReactNode }) {
       try {
         const summary = await getFinalSummary(recordingState.sessionId, symptomForm);
         setFinalSummary(summary);
+        
+        // Auto-save to history if enabled
+        const settings = await getSettings();
+        if (settings.autoSaveRecordings) {
+          await saveRecordingToHistory(summary);
+        }
       } catch (error) {
         console.error('Failed to fetch final summary:', error);
         handleError(error instanceof Error ? error.message : 'Failed to fetch summary');
