@@ -41,3 +41,60 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+
+# Data files
+data/*.wav
+data/*.mp3
+data/*.m4a
+data/*.flac
+data/*.ogg
+!data/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
+
+# Model files (optional - uncomment if you don't want to track models)
+# assets/*.onnx
+# assets/*.tflite
