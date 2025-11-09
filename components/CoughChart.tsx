@@ -29,16 +29,31 @@ export const CoughChart: React.FC<CoughChartProps> = ({ counts, labels, breakdow
     <Box
       sx={{
         width: '100%',
-        minHeight: '100dvh',
+        height: '100dvh',
         mx: 'auto',
         my: 0,
         pt: '50px',
         backgroundColor: themeColors.background,
         color: themeColors.text,
         fontFamily: Colors.typography.fontFamily,
+        position: 'relative',
       }}
     >
-      <Typography variant="h6" gutterBottom align="center" sx={{ color: themeColors.text }}>
+      <Typography
+        variant="h6"
+        align="center"
+        sx={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          py: 2,
+          mb: 3,
+          background: `linear-gradient(to bottom, ${themeColors.background} 90%, transparent)`,
+          color: themeColors.text,
+          fontWeight: 600,
+          backdropFilter: 'blur(4px)',
+        }}
+      >
         Nightly Cough Count
       </Typography>
 
@@ -47,6 +62,7 @@ export const CoughChart: React.FC<CoughChartProps> = ({ counts, labels, breakdow
         sx={{
           maxWidth: 'calc(100dvw - 40px)',
           marginLeft: '20px',
+          marginTop: '20px',
           backgroundColor: themeColors.secondary,
           borderRadius: '25px',
           boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
@@ -57,6 +73,7 @@ export const CoughChart: React.FC<CoughChartProps> = ({ counts, labels, breakdow
           sx={{
             height: '250px',
             maxWidth: 'calc(100dvw - 40px)',
+            marginTop: '20px',
           }}
           xAxis={[
             {
@@ -112,9 +129,20 @@ export const CoughChart: React.FC<CoughChartProps> = ({ counts, labels, breakdow
           }}
           layout="vertical"
         />
-
+      </Box>
+      <Box
+        sx={{
+          maxWidth: 'calc(100dvw - 40px)',
+          marginLeft: '20px',
+          marginTop: '20px',
+          backgroundColor: themeColors.secondary,
+          borderRadius: '25px',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+          padding: 0,
+        }}
+      >
         {/* Breakdown chart */}
-        <Box sx={{ mt: 6 }}>
+        <Box>
           {selectedIndex === null ? (
             <Typography variant="body1" align="center" sx={{ py: 10, color: themeColors.text }}>
               Select a day
@@ -180,6 +208,31 @@ export const CoughChart: React.FC<CoughChartProps> = ({ counts, labels, breakdow
             </Typography>
           )}
         </Box>
+      </Box>
+      <Box
+        sx={{
+          maxWidth: 'calc(100dvw - 40px)',
+          marginLeft: '20px',
+          marginTop: '20px',
+          backgroundColor: themeColors.secondary,
+          borderRadius: '25px',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+          padding: 0,
+        }}
+      >
+        <Typography sx={{ m: '20px', pt: '20px', color: themeColors.text, fontWeight: 600 }}>
+          You should know...
+        </Typography>
+        <Typography sx={{ m: '20px', color: themeColors.text }}>
+          Wet coughs, also known as productive coughs, can indicate that the body is trying to clear
+          mucus or phlegm from the airways, but they may also signal an underlying infection or
+          respiratory issue. While an occasional wet cough can result from a mild cold, persistent
+          or worsening symptoms could point to bronchitis, pneumonia, or other conditions that
+          require medical attention. The presence of discolored or bloody mucus, chest pain, or
+          shortness of breath can further increase concern. Ignoring a wet cough may allow
+          infections to spread or worsen, so monitoring its duration and severity is important for
+          protecting lung health.
+        </Typography>
       </Box>
     </Box>
   );
