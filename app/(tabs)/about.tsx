@@ -1,13 +1,16 @@
 import { Colors } from '@/constants/theme';
-import { Box, Typography, Paper, Divider } from '@mui/material';
+import { Box, Typography, Paper, Divider, IconButton } from '@mui/material';
 import React from 'react';
 import InfoIcon from '@mui/icons-material/Info';
 import ScienceIcon from '@mui/icons-material/Science';
 import SecurityIcon from '@mui/icons-material/Security';
 import HealthAndSafetyIcon from '@mui/icons-material/HealthAndSafety';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { useRouter } from 'expo-router';
 
 export default function AboutPage() {
   const themeColors = Colors.dark;
+  const router = useRouter();
 
   const features = [
     {
@@ -39,7 +42,10 @@ export default function AboutPage() {
         p: 3,
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+        <IconButton onClick={() => router.replace('/')} sx={{ color: themeColors.text }}>
+          <ArrowBackIcon />
+        </IconButton>
         <InfoIcon sx={{ fontSize: 40, color: themeColors.bright }} />
         <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.text }}>
           About BreathWatch

@@ -12,14 +12,18 @@ import {
   FormControl,
   InputLabel,
   Divider,
+  IconButton,
 } from '@mui/material';
 import React, { useState, useEffect } from 'react';
 import { getSettings, saveSettings, AppSettings, clearRecordingHistory } from '@/services/storage';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import SaveIcon from '@mui/icons-material/Save';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { useRouter } from 'expo-router';
 
 export default function SettingsPage() {
   const themeColors = Colors.dark;
+  const router = useRouter();
   const [settings, setSettings] = useState<AppSettings>({
     autoSaveRecordings: true,
     notificationsEnabled: true,
@@ -74,10 +78,14 @@ export default function SettingsPage() {
           color: themeColors.text,
           p: 3,
           display: 'flex',
-          alignItems: 'center',
+          flexDirection: 'column',
+          gap: 2,
           justifyContent: 'center',
         }}
       >
+        <IconButton onClick={() => router.replace('/')} sx={{ color: themeColors.text, alignSelf: 'flex-start' }}>
+          <ArrowBackIcon />
+        </IconButton>
         <Typography variant="body1" sx={{ color: themeColors.text }}>
           Loading settings...
         </Typography>
@@ -94,17 +102,14 @@ export default function SettingsPage() {
         p: 3,
       }}
     >
-      <Typography
-        variant="h4"
-        sx={{
-          mb: 3,
-          fontWeight: 700,
-          color: themeColors.text,
-          textAlign: 'center',
-        }}
-      >
-        Settings
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+        <IconButton onClick={() => router.replace('/')} sx={{ color: themeColors.text }}>
+          <ArrowBackIcon />
+        </IconButton>
+        <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.text }}>
+          Settings
+        </Typography>
+      </Box>
 
       <Paper
         sx={{
@@ -323,4 +328,3 @@ export default function SettingsPage() {
     </Box>
   );
 }
-

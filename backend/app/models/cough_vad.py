@@ -8,9 +8,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, List
 
 logger = logging.getLogger(__name__)
+
+ATTRIBUTE_KEYS = ["wet", "wheezing", "stridor", "choking", "congestion"]
 
 
 class SimpleCoughModel(nn.Module):
@@ -135,222 +137,133 @@ class CoughVAD:
             logger.error(f"Error loading cough VAD model: {e}", exc_info=True)
             self.model = None
     
-    def predict(self, features: np.ndarray) -> Tuple[float, float, float, float, float, float]:
+    def predict(self, features: np.ndarray) -> Tuple[float, Dict[str, float]]:
         """
-        Predict cough and attribute probabilities.
+        Predict cough probability and attribute probability vector.
         
         Args:
             features: Feature array (1s log-Mel spectrogram)
         
         Returns:
-            Tuple of (p_cough, p_attr_wet, p_attr_stridor, p_attr_choking, p_attr_congestion, p_attr_wheezing_selfreport)
-            All values in [0, 1]
+            Tuple of (p_cough, {"wet": ..., "wheezing": ..., ...})
         """
         if self.model is None:
-            # Mock prediction for development
             logger.warning("Using mock cough model prediction (model not loaded)")
             return self._mock_predict(features)
         
         try:
-            # Prepare input
             input_tensor = self._prepare_input(features)
-            
-            # Run inference
             with torch.no_grad():
                 output = self.model(input_tensor)
             
-            # Handle different output formats
-            # CoughMultitaskCNN returns a tuple: (logits_a, logits_b, ...)
-            # logits_a is [batch, 2] for binary cough classification
-            logger.info(f"🔍 Model output type: {type(output)}, is tuple/list: {isinstance(output, (list, tuple))}")
             if isinstance(output, (list, tuple)):
-                logger.info(f"🔍 Model output tuple length: {len(output)}")
-                logits_a = output[0]  # First output is cough binary classification
-                logger.info(f"🔍 First output (logits_a) type: {type(logits_a)}, shape: {logits_a.shape if hasattr(logits_a, 'shape') else 'unknown'}")
+                logits_np = self._to_numpy(output[0])
+                p_cough = self._extract_cough_probability(logits_np)
+                
                 if len(output) > 1:
-                    logger.info(f"🔍 Second output (probs_b) type: {type(output[1])}, shape: {output[1].shape if hasattr(output[1], 'shape') else 'unknown'}, values: {output[1]}")
-                
-                # Check if logits_a is 2D [batch, 2] - apply softmax for binary classification
-                if isinstance(logits_a, torch.Tensor):
-                    logits_a_np = logits_a.cpu().numpy()
+                    attr_values = self._extract_attribute_probs(output[1])
                 else:
-                    logits_a_np = np.array(logits_a)
-                
-                # If 2D with shape [batch, 2], apply softmax and extract cough probability
-                # This matches the reference script: torch.softmax(logits_a, dim=1)[:, 1]
-                if len(logits_a_np.shape) == 2 and logits_a_np.shape[1] == 2:
-                    # Apply softmax: exp(x) / sum(exp(x)) for each row (dim=1)
-                    exp_logits = np.exp(logits_a_np - np.max(logits_a_np, axis=1, keepdims=True))  # Numerical stability
-                    softmax_probs = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
-                    p_cough_from_softmax = float(softmax_probs[0, 1])  # Take cough probability (second column, first row)
-                    logger.info(f"✅ Applied softmax to binary logits [batch, 2]: {logits_a_np[0]} -> {softmax_probs[0]}, p_cough={p_cough_from_softmax:.3f}")
-                    
-                    # For attributes, check if there are more outputs in the tuple
-                    if len(output) > 1:
-                        # Second output is probs_b from CoughMultitaskCNN - should already have sigmoid applied!
-                        attr_output = output[1]
-                        if isinstance(attr_output, torch.Tensor):
-                            attr_array = attr_output.cpu().numpy()
-                        else:
-                            attr_array = np.array(attr_output)
-                        
-                        logger.info(f"🔍 Raw attribute output shape: {attr_array.shape}, values: {attr_array}")
-                        
-                        # Handle 2D [batch, 5] or 1D [5]
-                        if len(attr_array.shape) == 2:
-                            attr_raw = attr_array[0]  # Take first row
-                        else:
-                            attr_raw = attr_array.flatten()[:5]
-                        
-                        logger.info(f"🔍 Extracted attribute raw values: {attr_raw}")
-                        logger.info(f"🔍 Min: {np.min(attr_raw):.3f}, Max: {np.max(attr_raw):.3f}, Mean: {np.mean(attr_raw):.3f}")
-                        
-                        # Check if values are in valid probability range [0, 1]
-                        # If any value > 1, they're logits and need sigmoid
-                        # ALSO check if all values are exactly 1.0 (which would be suspicious)
-                        if np.allclose(attr_raw, 1.0, atol=0.01):
-                            logger.error(f"⚠️⚠️⚠️ ALL ATTRIBUTE VALUES ARE 1.0! This is suspicious. Raw values: {attr_raw}")
-                            logger.error(f"   This suggests the model might not be applying sigmoid correctly, or we're reading the wrong output.")
-                            # Try to see if there's a different output or if we need to process differently
-                            # For now, use the values as-is but log the issue
-                            attr_probs = attr_raw
-                        elif np.any(attr_raw > 1.0) or np.any(attr_raw < 0.0):
-                            logger.warning(f"⚠️ Attribute values outside [0,1] range (likely logits): {attr_raw}, applying sigmoid")
-                            attr_probs = 1 / (1 + np.exp(-np.clip(attr_raw, -500, 500)))
-                            logger.info(f"✅ Applied sigmoid to attributes: {attr_raw} -> {attr_probs}")
-                        else:
-                            # Already probabilities
-                            attr_probs = attr_raw
-                            logger.info(f"✅ Using attribute probabilities from model (already in [0,1] range): {attr_probs}")
-                    else:
-                        # No separate attribute output - might be in the same tensor or model doesn't output them
-                        # Check if logits_a has more columns (e.g., [batch, 7] = 2 cough + 5 attributes)
-                        if logits_a_np.shape[1] >= 7:
-                            # Extract attributes from columns 2-6
-                            attr_logits = logits_a_np[0, 2:7]
-                            attr_probs = 1 / (1 + np.exp(-np.clip(attr_logits, -500, 500)))
-                            logger.info(f"✅ Extracted attributes from same tensor, applied sigmoid: {attr_logits} -> {attr_probs}")
-                        else:
-                            # No attributes available
-                            attr_probs = np.zeros(5)
-                            logger.warning("⚠️ No attribute output found in model, using zeros")
-                    
-                    # Return the processed values - CLAMP to [0, 1] to ensure valid probabilities
-                    result = (
-                        p_cough_from_softmax,
-                        float(np.clip(attr_probs[0], 0.0, 1.0)) if len(attr_probs) > 0 else 0.0,
-                        float(np.clip(attr_probs[1], 0.0, 1.0)) if len(attr_probs) > 1 else 0.0,
-                        float(np.clip(attr_probs[2], 0.0, 1.0)) if len(attr_probs) > 2 else 0.0,
-                        float(np.clip(attr_probs[3], 0.0, 1.0)) if len(attr_probs) > 3 else 0.0,
-                        float(np.clip(attr_probs[4], 0.0, 1.0)) if len(attr_probs) > 4 else 0.0,
-                    )
-                    logger.info(f"✅ Final attribute probabilities (clamped to [0,1]): wet={result[1]:.3f}, stridor={result[2]:.3f}, choking={result[3]:.3f}, congestion={result[4]:.3f}, wheezing={result[5]:.3f}")
-                    return result
-                elif len(logits_a_np.shape) == 2 and logits_a_np.shape[1] >= 6:
-                    # Single tensor with [batch, 6+] - first 2 are cough logits, rest are attributes
-                    logger.info(f"Model output is [batch, {logits_a_np.shape[1]}] - treating as combined output")
-                    # Apply softmax to first 2 columns (cough)
-                    cough_logits = logits_a_np[0, :2]
-                    exp_cough = np.exp(cough_logits - np.max(cough_logits))
-                    cough_probs = exp_cough / np.sum(exp_cough)
-                    p_cough_from_softmax = float(cough_probs[1])
-                    
-                    # Apply sigmoid to remaining columns (attributes)
-                    if logits_a_np.shape[1] >= 7:
-                        attr_logits = logits_a_np[0, 2:7]
-                    else:
-                        attr_logits = logits_a_np[0, 2:6] if logits_a_np.shape[1] >= 6 else np.zeros(5)
-                        attr_logits = np.pad(attr_logits, (0, 5 - len(attr_logits)), mode='constant')
-                    attr_probs = 1 / (1 + np.exp(-np.clip(attr_logits, -500, 500)))
-                    
-                    logger.info(f"✅ Processed combined output: p_cough={p_cough_from_softmax:.3f}, attributes={attr_probs}")
-                    return (
-                        p_cough_from_softmax,
-                        float(attr_probs[0]),
-                        float(attr_probs[1]),
-                        float(attr_probs[2]),
-                        float(attr_probs[3]),
-                        float(attr_probs[4]),
-                    )
-                else:
-                    # Not 2D [batch, 2] or [batch, 6+], treat as single output and flatten
-                    output_array = logits_a_np.flatten()
-                    logger.debug(f"Model output is not standard format, flattening: shape={logits_a_np.shape}")
+                    attr_values = self._infer_attributes_from_logits(logits_np)
             else:
-                # Single output, not a tuple
-                if isinstance(output, torch.Tensor):
-                    output_array = output.cpu().numpy()
-                else:
-                    output_array = np.array(output)
-                
-                # Flatten if needed
-                if len(output_array.shape) > 1:
-                    output_array = output_array.flatten()
+                flat_output = self._to_numpy(output)
+                p_cough, attr_values = self._decode_flat_output(flat_output)
             
-            # Ensure we have 6 outputs
-            if len(output_array) < self.num_outputs:
-                logger.warning(f"Model output has {len(output_array)} values, expected {self.num_outputs}")
-                output_array = np.pad(output_array, (0, self.num_outputs - len(output_array)), mode='constant')
-            elif len(output_array) > self.num_outputs:
-                output_array = output_array[:self.num_outputs]
-            
-            # Log raw model output for debugging
-            logger.info(f"🔍 Raw model output (before processing): shape={output_array.shape if hasattr(output_array, 'shape') else 'scalar'}, values={output_array}")
-            
-            # Check if output looks like logits (values outside [0,1] range or very large/small)
-            max_abs_value = np.max(np.abs(output_array))
-            needs_processing = max_abs_value > 5.0 or np.any(output_array < -2.0) or np.any(output_array > 2.0)
-            
-            if needs_processing:
-                logger.debug(f"Model output appears to be logits (max_abs={max_abs_value:.3f}), applying transformations...")
-                
-                # For CoughMultitaskCNN, the first output is binary classification logits (no_cough, cough)
-                # We need to apply softmax and take the second value (cough probability)
-                # The other 5 outputs are attribute logits that need sigmoid
-                
-                # Process first output (cough): apply softmax to binary logits
-                # If we have 2 values for cough, use softmax; otherwise assume single sigmoid output
-                if len(output_array) >= 2:
-                    # First two values might be [no_cough_logit, cough_logit] - apply softmax
-                    cough_logits = output_array[:2]
-                    cough_probs = np.exp(cough_logits) / np.sum(np.exp(cough_logits))
-                    p_cough = float(cough_probs[1])  # Take cough probability (second value)
-                    logger.debug(f"Applied softmax to cough logits: {cough_logits} -> {cough_probs}, p_cough={p_cough:.3f}")
-                    
-                    # Remaining outputs are attribute logits - apply sigmoid
-                    attr_logits = output_array[2:7] if len(output_array) >= 7 else output_array[1:6]
-                    attr_probs = 1 / (1 + np.exp(-attr_logits))
-                    p_attr_wet = float(attr_probs[0]) if len(attr_probs) > 0 else 0.0
-                    p_attr_stridor = float(attr_probs[1]) if len(attr_probs) > 1 else 0.0
-                    p_attr_choking = float(attr_probs[2]) if len(attr_probs) > 2 else 0.0
-                    p_attr_congestion = float(attr_probs[3]) if len(attr_probs) > 3 else 0.0
-                    p_attr_wheezing_selfreport = float(attr_probs[4]) if len(attr_probs) > 4 else 0.0
-                else:
-                    # Fallback: assume all outputs need sigmoid
-                    logger.warning("Unexpected output shape, applying sigmoid to all outputs")
-                    output_array = 1 / (1 + np.exp(-output_array))
-                    p_cough = float(np.clip(output_array[0], 0.0, 1.0))
-                    p_attr_wet = float(np.clip(output_array[1], 0.0, 1.0)) if len(output_array) > 1 else 0.0
-                    p_attr_stridor = float(np.clip(output_array[2], 0.0, 1.0)) if len(output_array) > 2 else 0.0
-                    p_attr_choking = float(np.clip(output_array[3], 0.0, 1.0)) if len(output_array) > 3 else 0.0
-                    p_attr_congestion = float(np.clip(output_array[4], 0.0, 1.0)) if len(output_array) > 4 else 0.0
-                    p_attr_wheezing_selfreport = float(np.clip(output_array[5], 0.0, 1.0)) if len(output_array) > 5 else 0.0
-            else:
-                # Already probabilities
-                logger.debug(f"Model output appears to be probabilities (max_abs={max_abs_value:.3f})")
-                p_cough = float(np.clip(output_array[0], 0.0, 1.0))
-                p_attr_wet = float(np.clip(output_array[1], 0.0, 1.0)) if len(output_array) > 1 else 0.0
-                p_attr_stridor = float(np.clip(output_array[2], 0.0, 1.0)) if len(output_array) > 2 else 0.0
-                p_attr_choking = float(np.clip(output_array[3], 0.0, 1.0)) if len(output_array) > 3 else 0.0
-                p_attr_congestion = float(np.clip(output_array[4], 0.0, 1.0)) if len(output_array) > 4 else 0.0
-                p_attr_wheezing_selfreport = float(np.clip(output_array[5], 0.0, 1.0)) if len(output_array) > 5 else 0.0
-            
-            logger.debug(f"Cough model prediction: cough={p_cough:.3f}, wet={p_attr_wet:.3f}, stridor={p_attr_stridor:.3f}, choking={p_attr_choking:.3f}, congestion={p_attr_congestion:.3f}, wheezing={p_attr_wheezing_selfreport:.3f}")
-            return (p_cough, p_attr_wet, p_attr_stridor, p_attr_choking, p_attr_congestion, p_attr_wheezing_selfreport)
-            
+            p_cough_clamped, attr_dict = self._format_prediction(p_cough, attr_values)
+            logger.debug(f"Cough model prediction: p_cough={p_cough_clamped:.3f}, attrs={attr_dict}")
+            return p_cough_clamped, attr_dict
+        
         except Exception as e:
             logger.error(f"Error in cough model prediction: {e}", exc_info=True)
             return self._mock_predict(features)
+    
+    def _to_numpy(self, value) -> np.ndarray:
+        """Convert torch tensors or sequences to numpy arrays."""
+        if isinstance(value, torch.Tensor):
+            return value.detach().cpu().numpy()
+        return np.array(value)
+    
+    def _extract_cough_probability(self, logits_np: np.ndarray) -> float:
+        """Extract cough probability from logits or probabilities."""
+        if logits_np is None:
+            return 0.0
+        flat = logits_np.reshape(-1)
+        if flat.size >= 2:
+            logits_pair = flat[:2]
+            exp_logits = np.exp(logits_pair - np.max(logits_pair))
+            probs = exp_logits / np.sum(exp_logits)
+            return float(np.clip(probs[1], 0.0, 1.0))
+        elif flat.size == 1:
+            value = flat[0]
+            if value < 0.0 or value > 1.0:
+                value = 1 / (1 + np.exp(-np.clip(value, -500, 500)))
+            return float(np.clip(value, 0.0, 1.0))
+        return 0.0
+    
+    def _extract_attribute_probs(self, attr_output) -> np.ndarray:
+        """Normalize attribute outputs to probabilities in [0,1]."""
+        attr_np = self._to_numpy(attr_output)
+        if attr_np.ndim > 1:
+            attr_vec = attr_np.reshape(attr_np.shape[0], -1)[0]
+        else:
+            attr_vec = attr_np.flatten()
+        
+        if attr_vec.size < len(ATTRIBUTE_KEYS):
+            attr_vec = np.pad(attr_vec, (0, len(ATTRIBUTE_KEYS) - attr_vec.size), mode="constant")
+        else:
+            attr_vec = attr_vec[:len(ATTRIBUTE_KEYS)]
+        
+        if np.any(attr_vec < 0.0) or np.any(attr_vec > 1.0):
+            attr_vec = 1 / (1 + np.exp(-np.clip(attr_vec, -500, 500)))
+        else:
+            attr_vec = np.clip(attr_vec, 0.0, 1.0)
+        return attr_vec
+    
+    def _infer_attributes_from_logits(self, logits_np: np.ndarray) -> np.ndarray:
+        """Infer attribute probabilities from logits tensor when no explicit attr head is present."""
+        if logits_np is None:
+            return np.zeros(len(ATTRIBUTE_KEYS))
+        
+        if logits_np.ndim >= 2 and logits_np.shape[1] >= len(ATTRIBUTE_KEYS) + 2:
+            attr_logits = logits_np[0, 2:2 + len(ATTRIBUTE_KEYS)]
+        else:
+            flat = logits_np.reshape(-1)
+            if flat.size >= len(ATTRIBUTE_KEYS) + 2:
+                attr_logits = flat[2:2 + len(ATTRIBUTE_KEYS)]
+            elif flat.size >= len(ATTRIBUTE_KEYS) + 1:
+                attr_logits = flat[1:1 + len(ATTRIBUTE_KEYS)]
+            else:
+                return np.zeros(len(ATTRIBUTE_KEYS))
+        return 1 / (1 + np.exp(-np.clip(attr_logits, -500, 500)))
+    
+    def _decode_flat_output(self, flat_output: np.ndarray) -> Tuple[float, np.ndarray]:
+        """Handle single-tensor outputs that include cough + attributes."""
+        if flat_output is None:
+            return 0.0, np.zeros(len(ATTRIBUTE_KEYS))
+        
+        flat = flat_output.flatten()
+        if flat.size >= len(ATTRIBUTE_KEYS) + 2:
+            p_cough = self._extract_cough_probability(flat[:2])
+            attr_values = self._extract_attribute_probs(flat[2:2 + len(ATTRIBUTE_KEYS)])
+            return p_cough, attr_values
+        
+        if flat.size == 0:
+            return 0.0, np.zeros(len(ATTRIBUTE_KEYS))
+        
+        p_cough_val = flat[0]
+        attr_slice = flat[1:] if flat.size > 1 else np.zeros(0)
+        attr_values = self._extract_attribute_probs(attr_slice)
+        if p_cough_val < 0.0 or p_cough_val > 1.0:
+            p_cough_val = 1 / (1 + np.exp(-np.clip(p_cough_val, -500, 500)))
+        return float(np.clip(p_cough_val, 0.0, 1.0)), attr_values
+    
+    def _format_prediction(self, p_cough: float, attr_values: Optional[np.ndarray]) -> Tuple[float, Dict[str, float]]:
+        """Clamp outputs and convert to attribute dictionary."""
+        attr_list = list(attr_values.flatten()) if attr_values is not None else []
+        attr_dict: Dict[str, float] = {}
+        for idx, key in enumerate(ATTRIBUTE_KEYS):
+            value = attr_list[idx] if idx < len(attr_list) else 0.0
+            attr_dict[key] = float(np.clip(value, 0.0, 1.0))
+        return float(np.clip(p_cough, 0.0, 1.0)), attr_dict
     
     def _prepare_input(self, features: np.ndarray) -> torch.Tensor:
         """
@@ -400,7 +313,7 @@ class CoughVAD:
         
         return input_tensor
     
-    def _mock_predict(self, features: np.ndarray) -> Tuple[float, float, float, float, float, float]:
+    def _mock_predict(self, features: np.ndarray) -> Tuple[float, Dict[str, float]]:
         """Mock prediction for development/testing."""
         # Simple heuristic: if audio has high energy in mid frequencies, might be cough
         if len(features.shape) >= 2:
@@ -409,11 +322,12 @@ class CoughVAD:
         else:
             p_cough = 0.5
         
-        # Mock attribute probabilities (lower than cough probability)
-        p_attr_wet = p_cough * 0.6
-        p_attr_stridor = p_cough * 0.3
-        p_attr_choking = p_cough * 0.2
-        p_attr_congestion = p_cough * 0.5
-        p_attr_wheezing_selfreport = p_cough * 0.4
+        attr_dict = {
+            "wet": float(np.clip(p_cough * 0.6, 0.0, 1.0)),
+            "wheezing": float(np.clip(p_cough * 0.4, 0.0, 1.0)),
+            "stridor": float(np.clip(p_cough * 0.3, 0.0, 1.0)),
+            "choking": float(np.clip(p_cough * 0.2, 0.0, 1.0)),
+            "congestion": float(np.clip(p_cough * 0.5, 0.0, 1.0)),
+        }
         
-        return (p_cough, p_attr_wet, p_attr_stridor, p_attr_choking, p_attr_congestion, p_attr_wheezing_selfreport)
+        return float(np.clip(p_cough, 0.0, 1.0)), attr_dict

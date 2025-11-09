@@ -19,14 +19,15 @@ from fastapi.responses import JSONResponse
 load_dotenv()
 
 from app.schemas import (
-    AudioAnalysisRequest, 
-    AudioAnalysisResponse, 
-    DetectedEvent, 
+    AudioAnalysisRequest,
+    AudioAnalysisResponse,
+    DetectedEvent,
     DedalusInterpretation,
     MobileSummaryRequest,
     NightlySummaryResponse,
     WindowPrediction,
     CoughEvent,
+    CoughEventTag,
     ChunkProcessRequest,
     ChunkProcessResponse,
     FinalSummaryRequest,
@@ -36,11 +37,18 @@ from app.schemas import (
     HourlyMetrics,
     TrendComparison,
     QualityMetrics,
-    DisplayStrings
+    DisplayStrings,
+    ProbabilityTimeline,
+    EventSummary,
+    ProbabilityEvent,
 )
 from app.preprocessing.audio_clean import load_audio, trim_silence, denoise_audio, normalize_audio
 from app.preprocessing.feature_extraction_mobile import prepare_mobile_features, segment_audio_1s_windows
-from app.preprocessing.event_detection import detect_cough_events_with_hysteresis, calculate_snr
+from app.preprocessing.event_detection import (
+    calculate_snr,
+    build_probability_timeline,
+    summarize_probability_events,
+)
 from app.models.cough_vad import CoughVAD
 from app.models.wheeze_detector import WheezeDetector
 import sys
@@ -341,9 +349,8 @@ async def analyze_audio(
                     window_length=1.0
                 )
                 
-                # Cough model (returns 6 values: p_cough + 5 attributes)
-                (p_cough, p_attr_wet, p_attr_stridor, p_attr_choking, 
-                 p_attr_congestion, p_attr_wheezing_selfreport) = cough_vad_model.predict(features)
+                # Cough model (returns p_cough + attribute probability vector)
+                p_cough, _attr_probs = cough_vad_model.predict(features)
                 cough_prob = p_cough  # Use p_cough for threshold check
                 cough_probs.append(cough_prob)
                 
@@ -617,9 +624,8 @@ async def process_chunk(
                         window_length=1.0
                     )
                     
-                    # Run cough model (returns 6 values)
-                    (p_cough, p_attr_wet, p_attr_stridor, p_attr_choking, 
-                     p_attr_congestion, p_attr_wheezing_selfreport) = cough_model.predict(features)
+                    # Run cough model (returns scalar + attribute vector)
+                    p_cough, attr_probs = cough_model.predict(features)
                     
                     # Run wheeze model
                     p_wheeze = wheeze_model.predict(features)
@@ -630,11 +636,11 @@ async def process_chunk(
                     window_predictions.append(WindowPrediction(
                         window_index=absolute_window_idx,
                         p_cough=p_cough,
-                        p_attr_wet=p_attr_wet,
-                        p_attr_stridor=p_attr_stridor,
-                        p_attr_choking=p_attr_choking,
-                        p_attr_congestion=p_attr_congestion,
-                        p_attr_wheezing_selfreport=p_attr_wheezing_selfreport,
+                        p_attr_wet=attr_probs.get("wet", 0.0),
+                        p_attr_wheezing=attr_probs.get("wheezing", 0.0),
+                        p_attr_stridor=attr_probs.get("stridor", 0.0),
+                        p_attr_choking=attr_probs.get("choking", 0.0),
+                        p_attr_congestion=attr_probs.get("congestion", 0.0),
                         p_wheeze=p_wheeze,
                         snr=snr
                     ))
@@ -646,103 +652,39 @@ async def process_chunk(
             logger.error(f"Error in window processing loop: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Failed to process audio windows: {str(e)}")
         
-        # Detect cough events with hysteresis
+        # Build probability timeline + event summary
         try:
-            logger.info("   Detecting cough events...")
-            logger.info(f"   📊 Processing {len(window_predictions)} window predictions from model")
-            # Add comprehensive diagnostic logging for all p_cough values
-            if window_predictions:
-                # Log statistics for all windows
-                all_p_cough = [w.p_cough for w in window_predictions]
-                if all_p_cough:
-                    min_p_cough = min(all_p_cough)
-                    max_p_cough = max(all_p_cough)
-                    avg_p_cough = sum(all_p_cough) / len(all_p_cough)
-                    logger.info(f"   p_cough statistics: min={min_p_cough:.3f}, max={max_p_cough:.3f}, avg={avg_p_cough:.3f} (from {len(window_predictions)} windows)")
-                
-                # Log windows with p_cough >= 0.3 (new threshold)
-                high_cough_windows = [w for w in window_predictions if w.p_cough >= 0.3]
-                logger.info(f"   Windows with p_cough >= 0.3: {len(high_cough_windows)}/{len(window_predictions)}")
-                if high_cough_windows:
-                    # Show top 10 p_cough values
-                    sorted_windows = sorted(high_cough_windows, key=lambda w: w.p_cough, reverse=True)
-                    logger.info(f"   Top p_cough values: {[f'{w.p_cough:.3f}' for w in sorted_windows[:10]]}")
-                
-                # Also log windows with p_cough >= 0.5 for comparison
-                very_high_cough_windows = [w for w in window_predictions if w.p_cough >= 0.5]
-                logger.info(f"   Windows with p_cough >= 0.5: {len(very_high_cough_windows)}/{len(window_predictions)}")
-                
-                # Log p_cough time series for first 50 windows to see pattern
-                if len(window_predictions) > 0:
-                    logger.info(f"   📊 p_cough time series (first 50 windows, stride=0.25s):")
-                    time_series_str = ""
-                    for idx, w in enumerate(window_predictions[:50]):
-                        time_s = idx * 0.25
-                        marker = "🔴" if w.p_cough >= 0.3 else "⚪"
-                        time_series_str += f"{marker} {time_s:5.2f}s:{w.p_cough:.2f}  "
-                        if (idx + 1) % 10 == 0:  # New line every 10 windows
-                            logger.info(f"      {time_series_str}")
-                            time_series_str = ""
-                    if time_series_str:
-                        logger.info(f"      {time_series_str}")
-            
-            # Use improved event grouping that better separates individual coughs
-            # Lowered threshold from 0.5 to 0.3 for increased sensitivity
-            # Added logic to split events when p_cough drops significantly or there's a gap
-            from app.preprocessing.event_detection import group_cough_events_simple
-            cough_events = group_cough_events_simple(
-                window_predictions,
-                threshold=0.3,  # Lowered from 0.5 to 0.3 for increased sensitivity
-                tile_seconds=1.0,
-                stride_seconds=0.25,
-                min_gap_ms=3000,  # Minimum 3 seconds gap between events to count as separate coughs
-                min_drop=0.15  # Split if p_cough drops by 0.15 even if still above threshold
-            )
-            
-            # Disabled SNR quality filtering to increase sensitivity
-            # All detected events are now considered valid
-            valid_events = cough_events  # Removed SNR filtering
-            logger.info(f"   Detected {len(cough_events)} total events (SNR filtering disabled for increased sensitivity)")
-            
-            if valid_events:
-                logger.info(f"   Event details:")
-                for i, event in enumerate(valid_events[:10]):  # Log first 10 events
-                    duration_s = (event.end_ms - event.start_ms) / 1000.0
-                    logger.info(f"     Event {i+1}: {duration_s:.2f}s, confidence={event.confidence:.3f}, tags={event.tags}")
+            probability_timeline = build_probability_timeline(window_predictions)
+            event_summary = summarize_probability_events(window_predictions)
+            legacy_events = [
+                _probability_event_to_cough_event(evt) for evt in event_summary.events
+            ]
+            logger.info(f"   Detected {event_summary.num_events} cough probability events")
         except Exception as e:
-            logger.error(f"Error detecting cough events: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Failed to detect cough events: {str(e)}")
-        
-        # Adjust event timestamps to be absolute (relative to session start)
-        # Each window index represents 0.25s, so multiply by 250ms
-        # chunk_start_ms = total_previous_windows * 250  # milliseconds
-        # Actually, events already have timestamps relative to chunk start (in ms)
-        # We need to add the chunk's start time in milliseconds
-        # With stride=0.25s, chunk start time = total_previous_windows * 250ms
-        chunk_start_ms = total_previous_windows * 250  # milliseconds
-        for event in valid_events:
-            event.start_ms += chunk_start_ms
-            event.end_ms += chunk_start_ms
+            logger.error(f"Error building probability event summary: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Failed to build probability event summary: {str(e)}")
         
         # Store chunk results
         try:
             chunk_result = {
                 "chunk_index": chunk_index,
-                "cough_count": len(valid_events),
+                "cough_count": event_summary.num_events,
                 "wheeze_windows": wheeze_windows,
                 "windows_processed": len(windows),
-                "detected_events": [e.model_dump() for e in valid_events],
+                "probability_timeline": probability_timeline.model_dump(),
+                "event_summary": event_summary.model_dump(),
+                "detected_events": [e.model_dump() for e in legacy_events],
                 "window_predictions": [w.model_dump() for w in window_predictions],
                 "timestamp": datetime.now()
             }
             
             sessions[session_id]["chunks"].append(chunk_result)
             
-            logger.info(f"✅ Chunk {chunk_index} processed: {len(valid_events)} COUGH EVENTS DETECTED, {wheeze_windows} wheeze windows")
-            logger.info(f"   📊 COUGH COUNT = {len(valid_events)} (this is the NUMBER of coughs, not a percentage!)")
+            logger.info(f"✅ Chunk {chunk_index} processed: {event_summary.num_events} COUGH EVENTS DETECTED, {wheeze_windows} wheeze windows")
+            logger.info(f"   📊 COUGH COUNT = {event_summary.num_events} (this is the NUMBER of coughs, not a percentage!)")
             logger.info(f"   Session {session_id} now has {len(sessions[session_id]['chunks'])} total chunks")
-            if len(valid_events) > 0:
-                logger.info(f"   Event details: {[(e.start_ms/1000, e.end_ms/1000, e.confidence) for e in valid_events[:5]]}")
+            if legacy_events:
+                logger.info(f"   Event details: {[(e.start_ms/1000, e.end_ms/1000, e.confidence) for e in legacy_events[:5]]}")
         except Exception as e:
             logger.error(f"Error storing chunk results: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Failed to store chunk results: {str(e)}")
@@ -752,10 +694,12 @@ async def process_chunk(
             return ChunkProcessResponse(
                 chunk_index=chunk_index,
                 session_id=session_id,
-                cough_count=len(valid_events),
+                cough_count=event_summary.num_events,
                 wheeze_windows=wheeze_windows,
                 windows_processed=len(windows),
-                detected_events=valid_events
+                probability_timeline=probability_timeline,
+                event_summary=event_summary,
+                detected_events=legacy_events
             )
         except Exception as e:
             logger.error(f"Error creating response: {e}", exc_info=True)
@@ -838,6 +782,13 @@ async def get_final_summary(
             total_wheeze_windows += chunk["wheeze_windows"]
             total_windows += chunk["windows_processed"]
         
+        # Build probability timeline + nightly event summary
+        probability_timeline = build_probability_timeline(all_window_predictions)
+        nightly_event_summary = summarize_probability_events(all_window_predictions)
+        all_cough_events = [
+            _probability_event_to_cough_event(evt) for evt in nightly_event_summary.events
+        ]
+        
         # Calculate metrics
         total_duration_minutes = total_windows / 60.0
         coughs_per_hour = (len(all_cough_events) / total_duration_minutes) * 60.0 if total_duration_minutes > 0 else 0.0
@@ -892,7 +843,7 @@ async def get_final_summary(
         
         # Get Dedalus interpretation (ONLY called once at end of night, not per chunk)
         dedalus_interpretation = None
-        if all_cough_events:
+        try:
             logger.info(f"Calling Dedalus AI for final interpretation (session {session_id})")
             dedalus_client = get_dedalus_client()
             dedalus_interpretation = dedalus_client.interpret_results(
@@ -902,7 +853,9 @@ async def get_final_summary(
                 cough_healthy_count=0,  # Not used in binary VAD
                 cough_sick_count=0,  # Not used in binary VAD
                 crackle_probability=0.0,  # Not detected in binary model
-                normal_probability=1.0 - (wheeze_time_percent / 100.0),
+                normal_probability=max(
+                    0.0, 1.0 - (wheeze_time_percent / 100.0)
+                ),
                 sleep_duration_minutes=total_duration_minutes,
                 patient_age=session.get("age"),
                 patient_sex=session.get("sex"),
@@ -910,8 +863,10 @@ async def get_final_summary(
                 attribute_stridor_percent=attribute_prevalence.stridor,
                 attribute_choking_percent=attribute_prevalence.choking,
                 attribute_congestion_percent=attribute_prevalence.congestion,
-                attribute_wheezing_selfreport_percent=attribute_prevalence.selfreported_wheezing
+                attribute_wheezing_selfreport_percent=attribute_prevalence.wheezing
             )
+        except Exception as dedalus_error:
+            logger.warning(f"Dedalus interpretation failed for session {session_id}: {dedalus_error}")
         
         # Calculate quality metrics
         quality_metrics = _calculate_quality_metrics(all_window_predictions, all_cough_events)
@@ -954,6 +909,8 @@ async def get_final_summary(
             wheeze_intensity_avg=wheeze_intensity_avg,
             attribute_prevalence=attribute_prevalence,
             cough_events=all_cough_events,
+            event_summary=nightly_event_summary,
+            probability_timeline=probability_timeline,
             pattern_scores=pattern_scores,
             trend_arrow=trend_arrow,
             hourly_breakdown=hourly_breakdown,
@@ -1030,19 +987,19 @@ def _calculate_attribute_prevalence(
     # Log sample attribute probabilities to debug
     if window_predictions:
         sample = window_predictions[0]
-        logger.info(f"Sample window prediction: p_attr_wet={sample.p_attr_wet:.3f}, p_attr_stridor={sample.p_attr_stridor:.3f}, p_attr_choking={sample.p_attr_choking:.3f}, p_attr_congestion={sample.p_attr_congestion:.3f}, p_attr_wheezing={sample.p_attr_wheezing_selfreport:.3f}")
+        logger.info(f"Sample window prediction: p_attr_wet={sample.p_attr_wet:.3f}, p_attr_stridor={sample.p_attr_stridor:.3f}, p_attr_choking={sample.p_attr_choking:.3f}, p_attr_congestion={sample.p_attr_congestion:.3f}, p_attr_wheezing={sample.p_attr_wheezing:.3f}")
     
     # Count windows with attribute probabilities >= 0.5
     wet_count = sum(1 for w in window_predictions if w.p_attr_wet >= 0.5)
     stridor_count = sum(1 for w in window_predictions if w.p_attr_stridor >= 0.5)
     choking_count = sum(1 for w in window_predictions if w.p_attr_choking >= 0.5)
     congestion_count = sum(1 for w in window_predictions if w.p_attr_congestion >= 0.5)
-    wheezing_count = sum(1 for w in window_predictions if w.p_attr_wheezing_selfreport >= 0.5)
+    wheezing_count = sum(1 for w in window_predictions if w.p_attr_wheezing >= 0.5)
     
     # Log sample values to debug
     if window_predictions:
         sample_attrs = window_predictions[0]
-        logger.info(f"🔍 Sample window attribute values: wet={sample_attrs.p_attr_wet:.3f}, stridor={sample_attrs.p_attr_stridor:.3f}, choking={sample_attrs.p_attr_choking:.3f}, congestion={sample_attrs.p_attr_congestion:.3f}, wheezing={sample_attrs.p_attr_wheezing_selfreport:.3f}")
+        logger.info(f"🔍 Sample window attribute values: wet={sample_attrs.p_attr_wet:.3f}, stridor={sample_attrs.p_attr_stridor:.3f}, choking={sample_attrs.p_attr_choking:.3f}, congestion={sample_attrs.p_attr_congestion:.3f}, wheezing={sample_attrs.p_attr_wheezing:.3f}")
         
         # Check if all values are 1.0 (which would indicate a problem)
         all_wet = [w.p_attr_wet for w in window_predictions[:10]]
@@ -1053,7 +1010,7 @@ def _calculate_attribute_prevalence(
     avg_stridor = sum(w.p_attr_stridor for w in window_predictions) / total_windows if total_windows > 0 else 0.0
     avg_choking = sum(w.p_attr_choking for w in window_predictions) / total_windows if total_windows > 0 else 0.0
     avg_congestion = sum(w.p_attr_congestion for w in window_predictions) / total_windows if total_windows > 0 else 0.0
-    avg_wheezing = sum(w.p_attr_wheezing_selfreport for w in window_predictions) / total_windows if total_windows > 0 else 0.0
+    avg_wheezing = sum(w.p_attr_wheezing for w in window_predictions) / total_windows if total_windows > 0 else 0.0
     
     logger.info(f"Attribute counts (>=0.5): wet={wet_count}, stridor={stridor_count}, choking={choking_count}, congestion={congestion_count}, wheezing={wheezing_count}")
     logger.info(f"Average attribute probabilities: wet={avg_wet:.3f}, stridor={avg_stridor:.3f}, choking={avg_choking:.3f}, congestion={avg_congestion:.3f}, wheezing={avg_wheezing:.3f}")
@@ -1061,21 +1018,47 @@ def _calculate_attribute_prevalence(
     # Check if averages are suspiciously high (all 1.0)
     if avg_wet >= 0.99 and avg_stridor >= 0.99 and avg_choking >= 0.99 and avg_congestion >= 0.99 and avg_wheezing >= 0.99:
         logger.error(f"⚠️⚠️⚠️ ALL ATTRIBUTE PROBABILITIES ARE ~1.0! This indicates a problem with model output processing. Check if model is outputting logits that need sigmoid, or if values are being clamped incorrectly.")
-        logger.error(f"   Sample window values: {sample_attrs.p_attr_wet:.3f}, {sample_attrs.p_attr_stridor:.3f}, {sample_attrs.p_attr_choking:.3f}, {sample_attrs.p_attr_congestion:.3f}, {sample_attrs.p_attr_wheezing_selfreport:.3f}")
+        logger.error(f"   Sample window values: {sample_attrs.p_attr_wet:.3f}, {sample_attrs.p_attr_stridor:.3f}, {sample_attrs.p_attr_choking:.3f}, {sample_attrs.p_attr_congestion:.3f}, {sample_attrs.p_attr_wheezing:.3f}")
     
     # Calculate percentages - use AVERAGE PROBABILITIES (not threshold counts)
     # This gives the actual percentage from model output, not just binary threshold
     result = AttributePrevalence(
         wet=avg_wet * 100.0,  # Convert probability (0-1) to percentage (0-100)
+        wheezing=avg_wheezing * 100.0,
         stridor=avg_stridor * 100.0,
         choking=avg_choking * 100.0,
-        congestion=avg_congestion * 100.0,
-        selfreported_wheezing=avg_wheezing * 100.0
+        congestion=avg_congestion * 100.0
     )
     
-    logger.info(f"Attribute prevalence result: wet={result.wet:.1f}%, stridor={result.stridor:.1f}%, choking={result.choking:.1f}%, congestion={result.congestion:.1f}%, wheezing={result.selfreported_wheezing:.1f}%")
+    logger.info(f"Attribute prevalence result: wet={result.wet:.1f}%, wheezing={result.wheezing:.1f}%, stridor={result.stridor:.1f}%, choking={result.choking:.1f}%, congestion={result.congestion:.1f}%")
     
     return result
+
+
+def _probability_event_to_cough_event(prob_event: ProbabilityEvent) -> CoughEvent:
+    """Convert probability-based event to legacy CoughEvent for downstream metrics."""
+    tags: List[CoughEventTag] = []
+    if prob_event.attr_flags.wet:
+        tags.append(CoughEventTag.WET)
+    if prob_event.attr_flags.stridor:
+        tags.append(CoughEventTag.STRIDOR)
+    if prob_event.attr_flags.choking:
+        tags.append(CoughEventTag.CHOKING)
+    if prob_event.attr_flags.congestion:
+        tags.append(CoughEventTag.CONGESTION)
+    if prob_event.attr_flags.wheezing:
+        tags.append(CoughEventTag.SELFREPORTED_WHEEZING)
+    if not tags:
+        tags.append(CoughEventTag.COUGH_UNSPEC)
+    
+    return CoughEvent(
+        start_ms=int(prob_event.start * 1000),
+        end_ms=int(prob_event.end * 1000),
+        confidence=float(prob_event.p_cough_max),
+        tags=tags,
+        quality_flag=None,
+        window_indices=prob_event.tile_indices,
+    )
 
 
 def _calculate_hourly_breakdown(

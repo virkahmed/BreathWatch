@@ -1,7 +1,7 @@
 import { Colors } from '@/constants/theme';
 import { Box, Typography, Paper, Chip, Divider } from '@mui/material';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { getRecordingBySessionId, RecordingHistoryItem } from '@/services/storage';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import IconButton from '@mui/material/IconButton';
@@ -14,13 +14,7 @@ export default function AnalysisPage() {
   const [recording, setRecording] = useState<RecordingHistoryItem | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (sessionId) {
-      loadRecording();
-    }
-  }, [sessionId]);
-
-  const loadRecording = async () => {
+  const loadRecording = useCallback(async () => {
     try {
       const data = await getRecordingBySessionId(sessionId!);
       setRecording(data);
@@ -29,7 +23,13 @@ export default function AnalysisPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (sessionId) {
+      loadRecording();
+    }
+  }, [sessionId, loadRecording]);
 
   if (loading) {
     return (
@@ -86,20 +86,8 @@ export default function AnalysisPage() {
     });
   };
 
-  // Prepare chart data
-  const hourlyData = summary.hourly_breakdown || [];
-  const chartData = {
-    counts: hourlyData.map((hour) => hour.cough_count),
-    labels: hourlyData.map((hour) => `Hour ${hour.hour + 1}`),
-    breakdown: hourlyData.map((hour) => {
-      const totalCoughs = hour.cough_count;
-      const wetEstimate = Math.round(
-        (totalCoughs * summary.attribute_prevalence.wet) / 100
-      );
-      const dryEstimate = totalCoughs - wetEstimate;
-      return { wet: wetEstimate, dry: dryEstimate };
-    }),
-  };
+  const timeline = summary.probability_timeline;
+  const eventSummary = summary.event_summary;
 
   return (
     <Box
@@ -148,6 +136,14 @@ export default function AnalysisPage() {
             </Box>
             <Box>
               <Typography variant="caption" sx={{ color: themeColors.text, opacity: 0.7 }}>
+                Cough Events
+              </Typography>
+              <Typography variant="h5" sx={{ color: themeColors.bright, fontWeight: 700 }}>
+                {eventSummary?.num_events ?? summary.cough_events?.length ?? 0}
+              </Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" sx={{ color: themeColors.text, opacity: 0.7 }}>
                 Total Duration
               </Typography>
               <Typography variant="h5" sx={{ color: themeColors.bright, fontWeight: 700 }}>
@@ -174,11 +170,7 @@ export default function AnalysisPage() {
         </Paper>
 
         {/* Charts */}
-        <CoughChart
-          counts={chartData.counts}
-          labels={chartData.labels}
-          breakdown={chartData.breakdown}
-        />
+        <CoughChart timeline={timeline} eventSummary={eventSummary} />
 
         {/* Attribute Prevalence */}
         <Paper
@@ -215,6 +207,12 @@ export default function AnalysisPage() {
             {summary.attribute_prevalence.congestion > 0 && (
               <Chip
                 label={`Congestion: ${summary.attribute_prevalence.congestion.toFixed(1)}%`}
+                sx={{ backgroundColor: themeColors.bright, color: themeColors.background }}
+              />
+            )}
+            {summary.attribute_prevalence.wheezing > 0 && (
+              <Chip
+                label={`Wheezing: ${summary.attribute_prevalence.wheezing.toFixed(1)}%`}
                 sx={{ backgroundColor: themeColors.bright, color: themeColors.background }}
               />
             )}
@@ -304,4 +302,3 @@ export default function AnalysisPage() {
     </Box>
   );
 }
-

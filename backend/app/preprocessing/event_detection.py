@@ -8,7 +8,17 @@ hysteresis-based approach.
 import logging
 import numpy as np
 from typing import List, Tuple, Dict, Optional
-from app.schemas import WindowPrediction, CoughEvent, CoughEventTag
+from app.schemas import (
+    WindowPrediction,
+    CoughEvent,
+    CoughEventTag,
+    ProbabilityTimeline,
+    EventSummary,
+    ProbabilityEvent,
+    AttributeVector,
+    AttributeVectorSeries,
+    AttributeFlags,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -474,7 +484,7 @@ def _tag_event(windows: List[WindowPrediction]) -> List[CoughEventTag]:
     stridor_count = sum(1 for w in windows if w.p_attr_stridor >= 0.5)
     choking_count = sum(1 for w in windows if w.p_attr_choking >= 0.5)
     congestion_count = sum(1 for w in windows if w.p_attr_congestion >= 0.5)
-    wheezing_count = sum(1 for w in windows if w.p_attr_wheezing_selfreport >= 0.5)
+    wheezing_count = sum(1 for w in windows if w.p_attr_wheezing >= 0.5)
     
     if wet_count >= min_windows:
         tags.append(CoughEventTag.WET)
@@ -518,3 +528,134 @@ def calculate_snr(audio: np.ndarray, sample_rate: int = 16000) -> float:
         logger.warning(f"Error calculating SNR: {e}")
         return 10.0  # Default reasonable SNR
 
+
+def build_probability_timeline(
+    window_predictions: List[WindowPrediction],
+    tile_seconds: float = 1.0,
+    stride_seconds: float = 0.25
+) -> ProbabilityTimeline:
+    """
+    Build dense probability timeline arrays for cough + attributes.
+    """
+    if not window_predictions:
+        return ProbabilityTimeline(tile_seconds=tile_seconds, stride_seconds=stride_seconds)
+    
+    windows_sorted = sorted(window_predictions, key=lambda w: w.window_index)
+    indices = [w.window_index for w in windows_sorted]
+    times = [idx * stride_seconds for idx in indices]
+    p_cough = [w.p_cough for w in windows_sorted]
+    
+    attr_series = AttributeVectorSeries(
+        wet=[w.p_attr_wet for w in windows_sorted],
+        wheezing=[w.p_attr_wheezing for w in windows_sorted],
+        stridor=[w.p_attr_stridor for w in windows_sorted],
+        choking=[w.p_attr_choking for w in windows_sorted],
+        congestion=[w.p_attr_congestion for w in windows_sorted],
+    )
+    
+    return ProbabilityTimeline(
+        tile_seconds=tile_seconds,
+        stride_seconds=stride_seconds,
+        indices=indices,
+        times=times,
+        p_cough=p_cough,
+        attr_series=attr_series,
+    )
+
+
+def summarize_probability_events(
+    window_predictions: List[WindowPrediction],
+    tile_seconds: float = 1.0,
+    stride_seconds: float = 0.25,
+    cough_threshold: float = 0.5,
+    attr_flag_threshold: float = 0.7,
+) -> EventSummary:
+    """
+    Merge contiguous cough-like tiles into events and compute attribute statistics.
+    """
+    if not window_predictions:
+        return EventSummary()
+    
+    windows_sorted = sorted(window_predictions, key=lambda w: w.window_index)
+    events: List[ProbabilityEvent] = []
+    current_group: List[WindowPrediction] = []
+    last_index: Optional[int] = None
+    
+    for window in windows_sorted:
+        is_cough_like = window.p_cough >= cough_threshold
+        if is_cough_like:
+            if not current_group:
+                current_group = [window]
+            else:
+                expected_next = current_group[-1].window_index + 1
+                if window.window_index == expected_next:
+                    current_group.append(window)
+                else:
+                    event = _finalize_probability_event(
+                        current_group, tile_seconds, stride_seconds, attr_flag_threshold
+                    )
+                    if event:
+                        events.append(event)
+                    current_group = [window]
+            last_index = window.window_index
+        else:
+            if current_group:
+                event = _finalize_probability_event(
+                    current_group, tile_seconds, stride_seconds, attr_flag_threshold
+                )
+                if event:
+                    events.append(event)
+                current_group = []
+            last_index = window.window_index
+    
+    if current_group:
+        event = _finalize_probability_event(
+            current_group, tile_seconds, stride_seconds, attr_flag_threshold
+        )
+        if event:
+            events.append(event)
+    
+    return EventSummary(num_events=len(events), events=events)
+
+
+def _finalize_probability_event(
+    windows: List[WindowPrediction],
+    tile_seconds: float,
+    stride_seconds: float,
+    attr_flag_threshold: float,
+) -> Optional[ProbabilityEvent]:
+    """Convert a list of tiles into a ProbabilityEvent."""
+    if not windows:
+        return None
+    
+    tile_indices = [w.window_index for w in windows]
+    start_time = tile_indices[0] * stride_seconds
+    end_time = tile_indices[-1] * stride_seconds + tile_seconds
+    duration = end_time - start_time
+    
+    p_values = [w.p_cough for w in windows]
+    attr_probs = AttributeVector(
+        wet=float(np.mean([w.p_attr_wet for w in windows])),
+        wheezing=float(np.mean([w.p_attr_wheezing for w in windows])),
+        stridor=float(np.mean([w.p_attr_stridor for w in windows])),
+        choking=float(np.mean([w.p_attr_choking for w in windows])),
+        congestion=float(np.mean([w.p_attr_congestion for w in windows])),
+    )
+    attr_flags = AttributeFlags(
+        wet=int(attr_probs.wet >= attr_flag_threshold),
+        wheezing=int(attr_probs.wheezing >= attr_flag_threshold),
+        stridor=int(attr_probs.stridor >= attr_flag_threshold),
+        choking=int(attr_probs.choking >= attr_flag_threshold),
+        congestion=int(attr_probs.congestion >= attr_flag_threshold),
+    )
+    
+    return ProbabilityEvent(
+        start=float(start_time),
+        end=float(end_time),
+        duration=float(duration),
+        tile_indices=tile_indices,
+        p_cough_max=float(max(p_values)),
+        p_cough_mean=float(sum(p_values) / len(p_values)),
+        attr_probs=attr_probs,
+        attr_flags=attr_flags,
+    )

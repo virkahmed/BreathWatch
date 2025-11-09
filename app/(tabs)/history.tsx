@@ -7,6 +7,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { buildLocalInterpretation } from '@/utils/localInterpretation';
 
 export default function HistoryPage() {
   const themeColors = Colors.dark;
@@ -69,17 +71,14 @@ export default function HistoryPage() {
         p: 3,
       }}
     >
-      <Typography
-        variant="h4"
-        sx={{
-          mb: 3,
-          fontWeight: 700,
-          color: themeColors.text,
-          textAlign: 'center',
-        }}
-      >
-        Past Processed Logs
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+        <IconButton onClick={() => router.replace('/')} sx={{ color: themeColors.text }}>
+          <ArrowBackIcon />
+        </IconButton>
+        <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.text }}>
+          Past Processed Logs
+        </Typography>
+      </Box>
 
       {loading ? (
         <Typography variant="body1" align="center" sx={{ color: themeColors.text, mt: 4 }}>
@@ -108,6 +107,20 @@ export default function HistoryPage() {
             const summary = item.summary;
             const severityColor =
               summary.display_strings?.severity_badge_color || '#666';
+            const dedalus = summary.dedalus_interpretation;
+            const fallbackInterpretation = dedalus
+              ? null
+              : buildLocalInterpretation({
+                  coughCount: summary.event_summary?.num_events ?? summary.cough_events?.length ?? 0,
+                  wheezeCount: 0,
+                  wheezeProbability: (summary.wheeze_time_percent ?? 0) / 100,
+                  attrWetPercent: summary.attribute_prevalence?.wet ?? 0,
+                  attrStridorPercent: summary.attribute_prevalence?.stridor ?? 0,
+                  attrChokingPercent: summary.attribute_prevalence?.choking ?? 0,
+                  attrCongestionPercent: summary.attribute_prevalence?.congestion ?? 0,
+                  attrWheezingPercent: summary.attribute_prevalence?.wheezing ?? 0,
+                });
+            const displayedInterpretation = dedalus ?? fallbackInterpretation;
             
             return (
               <Card
@@ -118,7 +131,7 @@ export default function HistoryPage() {
                   boxShadow: `3px 3px 0 ${themeColors.text}`,
                   border: `2px solid ${themeColors.text}`,
                 }}
-              >
+                >
                 <CardContent>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
                     <Box>
@@ -160,7 +173,7 @@ export default function HistoryPage() {
                         Total Coughs
                       </Typography>
                       <Typography variant="h6" sx={{ color: themeColors.bright, fontWeight: 700 }}>
-                        {summary.cough_events?.length || 0}
+                        {summary.event_summary?.num_events ?? summary.cough_events?.length ?? 0}
                       </Typography>
                     </Box>
                     <Box>
@@ -180,6 +193,40 @@ export default function HistoryPage() {
                       </Typography>
                     </Box>
                   </Box>
+                  {displayedInterpretation && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="caption" sx={{ color: themeColors.text, opacity: 0.7 }}>
+                        AI Interpretation
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                        {displayedInterpretation.severity && (
+                          <Chip
+                            label={
+                              fallbackInterpretation && !dedalus
+                                ? `${displayedInterpretation.severity} (estimated)`
+                                : displayedInterpretation.severity
+                            }
+                            size="small"
+                            sx={{ backgroundColor: themeColors.bright, color: themeColors.background, fontWeight: 600 }}
+                          />
+                        )}
+                        <Typography variant="body2" sx={{ color: themeColors.text }}>
+                          {displayedInterpretation.interpretation}
+                        </Typography>
+                      </Box>
+                      {displayedInterpretation.recommendations?.length ? (
+                        <Box component="ul" sx={{ mt: 1, color: themeColors.text, pl: 2 }}>
+                          {displayedInterpretation.recommendations.map((rec, recIdx) => (
+                            <li key={recIdx}>
+                              <Typography variant="body2" sx={{ color: themeColors.text }}>
+                                {rec}
+                              </Typography>
+                            </li>
+                          ))}
+                        </Box>
+                      ) : null}
+                    </Box>
+                  )}
 
                   <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
                     <Button
@@ -217,4 +264,3 @@ export default function HistoryPage() {
     </Box>
   );
 }
-

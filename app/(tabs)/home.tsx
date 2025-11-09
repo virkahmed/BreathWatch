@@ -1,6 +1,6 @@
 import { CoughChart } from '@/components/CoughChart';
-import { Paper, Typography, Box, CircularProgress } from '@mui/material';
-import React, { useMemo, useEffect } from 'react';
+import { Paper, Typography, Box, CircularProgress, Chip, Divider } from '@mui/material';
+import React, { useEffect, useMemo } from 'react';
 import { useRecording } from '@/contexts/RecordingContext';
 import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/theme';
@@ -9,98 +9,56 @@ import BarChartIcon from '@mui/icons-material/BarChart';
 import SettingsIcon from '@mui/icons-material/Settings';
 import HelpIcon from '@mui/icons-material/Help';
 import InfoIcon from '@mui/icons-material/Info';
-
+import { buildLocalInterpretation } from '@/utils/localInterpretation';
+import HomeIcon from '@mui/icons-material/Home';
 export default function HomePage() {
   const themeColors = Colors.dark;
   const router = useRouter();
-  const { chunkResponses, finalSummary, fetchFinalSummary, isFetchingSummary, summaryProgress } = useRecording();
+  const { chunkResponses, finalSummary, isFetchingSummary, summaryProgress } = useRecording();
 
-  // Default sample data - all zeros initially
-  const defaultData = {
-    counts: [0],
-    labels: ['No Data'],
-    breakdown: [
-      { wet: 0, choking: 0, congestion: 0, stridor: 0, wheezing: 0 },
-    ],
-  };
-
-  // Calculate data from ACTUAL recording data - NO FAKE DISTRIBUTIONS
-  const chartData = useMemo(() => {
-    // If we have a final summary, use ACTUAL data
-    if (finalSummary) {
-      const hourlyData = finalSummary.hourly_breakdown || [];
-      const allEvents = finalSummary.cough_events || [];
-      
-      // Use hourly breakdown if available, otherwise show single total
-      if (hourlyData.length > 0) {
-        const labels = hourlyData.map((hour, idx) => `Hour ${idx + 1}`);
-        const counts = hourlyData.map(hour => hour.cough_count); // KEEP AS COUNTS
-        
-        // Use PERCENTAGES from attribute_prevalence (from model output)
-        const attr = finalSummary.attribute_prevalence || {};
-        console.log('Attribute prevalence (hourly):', attr);
-        const breakdown = [{
-          wet: attr.wet || 0,                                    // PERCENTAGE
-          choking: attr.choking || 0,                            // PERCENTAGE
-          congestion: attr.congestion || 0,                      // PERCENTAGE
-          stridor: attr.stridor || 0,                            // PERCENTAGE
-          wheezing: attr.selfreported_wheezing || 0,             // PERCENTAGE
-        }];
-        console.log('Breakdown (hourly):', breakdown);
-        
-        return { counts, labels, breakdown };
-      } else {
-        // No hourly data - show single total
-        const totalCoughs = allEvents.length;
-        const labels = ['Recording'];
-        const counts = [totalCoughs]; // KEEP AS COUNTS
-        
-        // Use PERCENTAGES from attribute_prevalence (from model output)
-        const attr = finalSummary.attribute_prevalence || {};
-        console.log('Attribute prevalence (single):', attr);
-        const breakdown = [{
-          wet: attr.wet || 0,                                    // PERCENTAGE
-          choking: attr.choking || 0,                            // PERCENTAGE
-          congestion: attr.congestion || 0,                      // PERCENTAGE
-          stridor: attr.stridor || 0,                            // PERCENTAGE
-          wheezing: attr.selfreported_wheezing || 0,             // PERCENTAGE
-        }];
-        console.log('Breakdown (single):', breakdown);
-        
-        return { counts, labels, breakdown };
-      }
+  const lastChunk = chunkResponses.length > 0 ? chunkResponses[chunkResponses.length - 1] : undefined;
+  const timelineSource = finalSummary?.probability_timeline ?? lastChunk?.probability_timeline;
+  const eventSummarySource = finalSummary?.event_summary ?? lastChunk?.event_summary;
+  const summarySource = finalSummary ?? lastChunk;
+  const totalCoughs =
+    eventSummarySource?.num_events ??
+    summarySource?.detected_events?.length ??
+    summarySource?.cough_events?.length ??
+    0;
+  const attrSummary = useMemo(() => {
+    if (finalSummary?.attribute_prevalence) {
+      return finalSummary.attribute_prevalence;
     }
-
-    // If we have chunk responses, use ACTUAL data from chunks
-    if (chunkResponses.length > 0) {
-      const labels = chunkResponses.map((chunk, idx) => `Chunk ${chunk.chunk_index + 1}`);
-      const counts = chunkResponses.map(chunk => chunk.cough_count);
-      
-      // Get ALL events from all chunks
-      const allEvents = chunkResponses.flatMap(chunk => chunk.detected_events || []);
-      
-      // Calculate ACTUAL attribute counts from events
-      const wetCount = allEvents.filter(e => e.tags?.includes('WET')).length;
-      const chokingCount = allEvents.filter(e => e.tags?.includes('CHOKING')).length;
-      const congestionCount = allEvents.filter(e => e.tags?.includes('CONGESTION')).length;
-      const stridorCount = allEvents.filter(e => e.tags?.includes('STRIDOR')).length;
-      const wheezingCount = allEvents.filter(e => e.tags?.includes('SELFREPORTED_WHEEZING')).length;
-      
-      // Single breakdown showing total attribute counts across all chunks
-      const breakdown = [{
-        wet: wetCount,
-        choking: chokingCount,
-        congestion: congestionCount,
-        stridor: stridorCount,
-        wheezing: wheezingCount,
-      }];
-      
-      return { counts, labels, breakdown };
+    if (timelineSource?.attr_series && timelineSource.p_cough.length > 0) {
+      const { wet, wheezing, stridor, choking, congestion } = timelineSource.attr_series;
+      const meanPct = (values: number[]) =>
+        values.length ? (values.reduce((sum, val) => sum + val, 0) / values.length) * 100 : 0;
+      return {
+        wet: meanPct(wet),
+        wheezing: meanPct(wheezing),
+        stridor: meanPct(stridor),
+        choking: meanPct(choking),
+        congestion: meanPct(congestion),
+      };
     }
-
-    // Default: show zeros
-    return defaultData;
-  }, [chunkResponses, finalSummary]);
+    return null;
+  }, [finalSummary?.attribute_prevalence, timelineSource]);
+  const dedalus = finalSummary?.dedalus_interpretation;
+  const fallbackInterpretation = useMemo(() => {
+    if (dedalus) return null;
+    if (!summarySource && !attrSummary) return null;
+    return buildLocalInterpretation({
+      coughCount: totalCoughs,
+      wheezeCount: summarySource?.wheeze_windows ?? 0,
+      wheezeProbability: ((finalSummary?.wheeze_time_percent ?? 0) / 100),
+      attrWetPercent: attrSummary?.wet ?? 0,
+      attrStridorPercent: attrSummary?.stridor ?? 0,
+      attrChokingPercent: attrSummary?.choking ?? 0,
+      attrCongestionPercent: attrSummary?.congestion ?? 0,
+      attrWheezingPercent: attrSummary?.wheezing ?? 0,
+    });
+  }, [dedalus, summarySource, attrSummary, totalCoughs, finalSummary?.wheeze_time_percent]);
+  const displayedInterpretation = dedalus ?? fallbackInterpretation;
 
   // Show real-time updates when chunks come in
   useEffect(() => {
@@ -115,6 +73,13 @@ export default function HomePage() {
   }, [chunkResponses]);
 
   const navigationCards = [
+    {
+      title: 'Home',
+      description: 'Back to start',
+      icon: <HomeIcon />,
+      route: '/',
+      color: themeColors.bright,
+    },
     {
       title: 'History',
       description: 'Past processed logs',
@@ -137,17 +102,17 @@ export default function HomePage() {
       color: themeColors.bright,
     },
     {
-      title: 'Help',
-      description: 'FAQ & docs',
-      icon: <HelpIcon />,
-      route: '/help',
-      color: themeColors.bright,
-    },
-    {
       title: 'About',
       description: 'Learn more',
       icon: <InfoIcon />,
       route: '/about',
+      color: themeColors.bright,
+    },
+    {
+      title: 'Help',
+      description: 'FAQ & docs',
+      icon: <HelpIcon />,
+      route: '/help',
       color: themeColors.bright,
     },
   ];
@@ -162,6 +127,24 @@ export default function HomePage() {
         fontFamily: Colors.typography.fontFamily,
       }}
     >
+      {/* Header */}
+      <Box sx={{ p: 3, textAlign: 'center' }}>
+        <Typography
+          variant="h3"
+          sx={{
+            color: '#ffffff',
+            fontWeight: 800,
+            letterSpacing: '-0.03em',
+            textShadow: '0 10px 30px rgba(0,0,0,0.35)',
+          }}
+        >
+          BreathWatch
+        </Typography>
+        <Typography variant="body2" sx={{ color: themeColors.text, opacity: 0.7 }}>
+          Nightly respiratory insights powered by real probabilities
+        </Typography>
+      </Box>
+
       {/* Chart Section - Now at top */}
       <Box sx={{ flex: 1, overflowY: 'auto', pb: '80px' }}>
         <Paper sx={{ minHeight: '100%', background: 'transparent' }}>
@@ -203,7 +186,7 @@ export default function HomePage() {
             {chunkResponses.reduce((sum, chunk) => sum + chunk.cough_count, 0)} total coughs detected
           </Typography>
           <Typography variant="caption" sx={{ color: themeColors.text, opacity: 0.7, mt: 1, display: 'block' }}>
-            Chart shows real-time data from processed chunks
+            Timeline shows the latest tile-by-tile cough probabilities
           </Typography>
         </Box>
       )}
@@ -226,13 +209,126 @@ export default function HomePage() {
             {finalSummary.coughs_per_hour.toFixed(1)} coughs/hour •{' '}
             {finalSummary.wheeze_time_percent.toFixed(1)}% wheeze time
           </Typography>
+          <Typography variant="caption" sx={{ color: themeColors.text, opacity: 0.7 }}>
+            {finalSummary.event_summary?.num_events ?? finalSummary.cough_events?.length ?? 0} cough
+            events detected
+          </Typography>
         </Box>
       )}
-      <CoughChart
-        counts={chartData.counts}
-        labels={chartData.labels}
-        breakdown={chartData.breakdown}
-      />
+      <CoughChart timeline={timelineSource} eventSummary={eventSummarySource} />
+      {summarySource && (
+        <Box
+          sx={{
+            background: 'rgba(0,0,0,0.2)',
+            borderRadius: '16px',
+            p: 3,
+            mx: 2,
+            mb: 3,
+            border: `1px solid rgba(255,255,255,0.08)`,
+          }}
+        >
+          <Typography variant="h6" sx={{ color: themeColors.text, fontWeight: 700, mb: 1 }}>
+            Session Summary
+          </Typography>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+              gap: 2,
+              mb: 2,
+            }}
+          >
+            <Box>
+              <Typography variant="caption" sx={{ color: themeColors.text, opacity: 0.7 }}>
+                Total Coughs
+              </Typography>
+              <Typography variant="h4" sx={{ color: themeColors.bright, fontWeight: 700 }}>
+                {totalCoughs}
+              </Typography>
+            </Box>
+            {finalSummary && (
+              <Box>
+                <Typography variant="caption" sx={{ color: themeColors.text, opacity: 0.7 }}>
+                  Coughs / Hour
+                </Typography>
+                <Typography variant="h4" sx={{ color: themeColors.bright, fontWeight: 700 }}>
+                  {finalSummary.coughs_per_hour.toFixed(1)}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+          {attrSummary && (
+            <>
+              <Divider sx={{ borderColor: 'rgba(255,255,255,0.15)', mb: 2 }} />
+              <Typography variant="caption" sx={{ color: themeColors.text, opacity: 0.7 }}>
+                Average Attribute Probabilities
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                {[
+                  { label: 'Wet', value: attrSummary.wet },
+                  { label: 'Wheeze', value: attrSummary.wheezing },
+                  { label: 'Stridor', value: attrSummary.stridor },
+                  { label: 'Choking', value: attrSummary.choking },
+                  { label: 'Congestion', value: attrSummary.congestion },
+                ].map((attr) => (
+                  <Chip
+                    key={attr.label}
+                    label={`${attr.label}: ${attr.value.toFixed(1)}%`}
+                    sx={{
+                      backgroundColor: 'rgba(255,255,255,0.08)',
+                      color: themeColors.text,
+                      fontWeight: 600,
+                    }}
+                  />
+                ))}
+              </Box>
+            </>
+          )}
+          {displayedInterpretation ? (
+            <>
+              <Divider sx={{ borderColor: 'rgba(255,255,255,0.15)', mt: 2, mb: 1 }} />
+              <Typography variant="caption" sx={{ color: themeColors.text, opacity: 0.7 }}>
+                AI Interpretation
+              </Typography>
+              {displayedInterpretation.severity && (
+                <Chip
+                  label={
+                    fallbackInterpretation && !dedalus
+                      ? `${displayedInterpretation.severity} (estimated)`
+                      : displayedInterpretation.severity
+                  }
+                  size="small"
+                  sx={{ mt: 1, backgroundColor: themeColors.bright, color: themeColors.background }}
+                />
+              )}
+              <Typography variant="body2" sx={{ color: themeColors.text, mt: 1 }}>
+                {displayedInterpretation.interpretation}
+              </Typography>
+              {displayedInterpretation.recommendations?.length ? (
+                <Box component="ul" sx={{ mt: 1, color: themeColors.text, pl: 2 }}>
+                  {displayedInterpretation.recommendations.map((rec, idx) => (
+                    <li key={idx}>
+                      <Typography variant="body2" sx={{ color: themeColors.text }}>
+                        {rec}
+                      </Typography>
+                    </li>
+                  ))}
+                </Box>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <Divider sx={{ borderColor: 'rgba(255,255,255,0.15)', mt: 2, mb: 1 }} />
+              <Typography variant="caption" sx={{ color: themeColors.text, opacity: 0.7 }}>
+                AI Interpretation
+              </Typography>
+              <Typography variant="body2" sx={{ color: themeColors.text, mt: 1, opacity: 0.8 }}>
+                Dedalus is still running. The interpretation appears here once the final summary is ready.
+              </Typography>
+            </>
+          )}
+        </Box>
+      )}
         </Paper>
       </Box>
 

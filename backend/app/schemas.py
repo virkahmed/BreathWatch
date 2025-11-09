@@ -54,10 +54,10 @@ class WindowPrediction(BaseModel):
     window_index: int = Field(..., description="Index of the 1-second window")
     p_cough: float = Field(..., ge=0.0, le=1.0, description="Cough probability")
     p_attr_wet: float = Field(..., ge=0.0, le=1.0, description="Wet cough attribute probability")
+    p_attr_wheezing: float = Field(..., ge=0.0, le=1.0, description="Wheezing attribute probability")
     p_attr_stridor: float = Field(..., ge=0.0, le=1.0, description="Stridor attribute probability")
     p_attr_choking: float = Field(..., ge=0.0, le=1.0, description="Choking attribute probability")
     p_attr_congestion: float = Field(..., ge=0.0, le=1.0, description="Congestion attribute probability")
-    p_attr_wheezing_selfreport: float = Field(..., ge=0.0, le=1.0, description="Self-reported wheezing attribute probability")
     p_wheeze: float = Field(..., ge=0.0, le=1.0, description="Wheeze probability (from wheeze model)")
     snr: Optional[float] = Field(None, description="Signal-to-noise ratio for quality assessment")
 
@@ -80,6 +80,61 @@ class CoughEvent(BaseModel):
     tags: List[CoughEventTag] = Field(default_factory=list, description="Event tags")
     quality_flag: Optional[str] = Field(None, description="Quality flag (e.g., INSUFFICIENT_SIGNAL)")
     window_indices: List[int] = Field(default_factory=list, description="Window indices included in event")
+
+
+class AttributeVector(BaseModel):
+    """Probability vector for cough attributes."""
+    wet: float = Field(0.0, ge=0.0, le=1.0)
+    wheezing: float = Field(0.0, ge=0.0, le=1.0)
+    stridor: float = Field(0.0, ge=0.0, le=1.0)
+    choking: float = Field(0.0, ge=0.0, le=1.0)
+    congestion: float = Field(0.0, ge=0.0, le=1.0)
+
+
+class AttributeVectorSeries(BaseModel):
+    """Timeline series for attribute probabilities."""
+    wet: List[float] = Field(default_factory=list)
+    wheezing: List[float] = Field(default_factory=list)
+    stridor: List[float] = Field(default_factory=list)
+    choking: List[float] = Field(default_factory=list)
+    congestion: List[float] = Field(default_factory=list)
+
+
+class AttributeFlags(BaseModel):
+    """Binary attribute flags derived from probability thresholds."""
+    wet: int = Field(0, ge=0, le=1)
+    wheezing: int = Field(0, ge=0, le=1)
+    stridor: int = Field(0, ge=0, le=1)
+    choking: int = Field(0, ge=0, le=1)
+    congestion: int = Field(0, ge=0, le=1)
+
+
+class ProbabilityEvent(BaseModel):
+    """Probability-aware cough event derived from contiguous tiles."""
+    start: float = Field(..., ge=0.0, description="Event start time in seconds from recording start")
+    end: float = Field(..., ge=0.0, description="Event end time in seconds from recording start")
+    duration: float = Field(..., ge=0.0, description="Event duration in seconds")
+    tile_indices: List[int] = Field(default_factory=list, description="Tile indices included in the event")
+    p_cough_max: float = Field(..., ge=0.0, le=1.0, description="Maximum cough probability inside event")
+    p_cough_mean: float = Field(..., ge=0.0, le=1.0, description="Mean cough probability inside event")
+    attr_probs: AttributeVector = Field(default_factory=AttributeVector, description="Mean attribute probabilities for the event")
+    attr_flags: AttributeFlags = Field(default_factory=AttributeFlags, description="Binary attribute flags using strict thresholds (e.g., >=0.7)")
+
+
+class EventSummary(BaseModel):
+    """Collection of cough probability events."""
+    num_events: int = Field(0, ge=0, description="Number of events")
+    events: List[ProbabilityEvent] = Field(default_factory=list, description="Detailed cough events")
+
+
+class ProbabilityTimeline(BaseModel):
+    """Timeline of per-tile probabilities for cough and attributes."""
+    tile_seconds: float = Field(1.0, gt=0.0, description="Length of each tile in seconds")
+    stride_seconds: float = Field(0.25, gt=0.0, description="Stride between tile starts in seconds")
+    indices: List[int] = Field(default_factory=list, description="Tile indices (absolute across session)")
+    times: List[float] = Field(default_factory=list, description="Tile start times (seconds from session start)")
+    p_cough: List[float] = Field(default_factory=list, description="Cough probability per tile")
+    attr_series: AttributeVectorSeries = Field(default_factory=AttributeVectorSeries, description="Attribute probability series")
 
 
 class SymptomForm(BaseModel):
@@ -107,10 +162,10 @@ class PatternScore(BaseModel):
 class AttributePrevalence(BaseModel):
     """Attribute prevalence statistics."""
     wet: float = Field(0.0, ge=0.0, le=100.0, description="Percentage of wet-like tiles/events")
+    wheezing: float = Field(0.0, ge=0.0, le=100.0, description="Percentage of wheezing-like tiles/events")
     stridor: float = Field(0.0, ge=0.0, le=100.0, description="Percentage of stridor-like tiles/events")
     choking: float = Field(0.0, ge=0.0, le=100.0, description="Percentage of choking-like tiles/events")
     congestion: float = Field(0.0, ge=0.0, le=100.0, description="Percentage of congestion-like tiles/events")
-    selfreported_wheezing: float = Field(0.0, ge=0.0, le=100.0, description="Percentage of self-reported wheezing-like tiles/events")
 
 
 class HourlyMetrics(BaseModel):
@@ -171,7 +226,9 @@ class NightlySummary(BaseModel):
     attribute_prevalence: AttributePrevalence = Field(..., description="Attribute prevalence statistics")
     
     # Events
-    cough_events: List[CoughEvent] = Field(default_factory=list, description="All detected cough events")
+    cough_events: List[CoughEvent] = Field(default_factory=list, description="All detected cough events (legacy representation)")
+    event_summary: EventSummary = Field(default_factory=EventSummary, description="Probability-based cough events")
+    probability_timeline: ProbabilityTimeline = Field(default_factory=ProbabilityTimeline, description="Full-recording probability trajectory")
     
     # Pattern panel
     pattern_scores: List[PatternScore] = Field(default_factory=list, description="Pattern panel scores")
@@ -205,7 +262,9 @@ class ChunkProcessResponse(BaseModel):
     cough_count: int = Field(0, description="Number of cough events in chunk")
     wheeze_windows: int = Field(0, description="Number of windows with wheeze")
     windows_processed: int = Field(..., description="Total windows processed (should be 600 for 10 minutes)")
-    detected_events: List[CoughEvent] = Field(default_factory=list, description="Detected cough events in chunk")
+    probability_timeline: ProbabilityTimeline = Field(default_factory=ProbabilityTimeline, description="Tile-level probabilities for the chunk")
+    event_summary: EventSummary = Field(default_factory=EventSummary, description="Cough probability events in this chunk")
+    detected_events: List[CoughEvent] = Field(default_factory=list, description="[Legacy] raw cough events for backward compatibility")
 
 
 class FinalSummaryRequest(BaseModel):
@@ -241,7 +300,13 @@ WindowPrediction.model_rebuild()
 CoughEvent.model_rebuild()
 SymptomForm.model_rebuild()
 PatternScore.model_rebuild()
+AttributeVector.model_rebuild()
+AttributeVectorSeries.model_rebuild()
+AttributeFlags.model_rebuild()
 AttributePrevalence.model_rebuild()
+ProbabilityEvent.model_rebuild()
+EventSummary.model_rebuild()
+ProbabilityTimeline.model_rebuild()
 TrendComparison.model_rebuild()
 QualityMetrics.model_rebuild()
 DisplayStrings.model_rebuild()

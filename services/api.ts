@@ -4,12 +4,63 @@
 
 import { API_ENDPOINTS } from '@/constants/api';
 
+export interface AttributeVector {
+  wet: number;
+  wheezing: number;
+  stridor: number;
+  choking: number;
+  congestion: number;
+}
+
+export interface AttributeFlags {
+  wet: number;
+  wheezing: number;
+  stridor: number;
+  choking: number;
+  congestion: number;
+}
+
+export interface AttributeSeries {
+  wet: number[];
+  wheezing: number[];
+  stridor: number[];
+  choking: number[];
+  congestion: number[];
+}
+
+export interface ProbabilityTimeline {
+  tile_seconds: number;
+  stride_seconds: number;
+  indices: number[];
+  times: number[];
+  p_cough: number[];
+  attr_series: AttributeSeries;
+}
+
+export interface ProbabilityEvent {
+  start: number;
+  end: number;
+  duration: number;
+  tile_indices: number[];
+  p_cough_max: number;
+  p_cough_mean: number;
+  attr_probs: AttributeVector;
+  attr_flags: AttributeFlags;
+}
+
+export interface EventSummary {
+  num_events: number;
+  events: ProbabilityEvent[];
+}
+
 export interface ChunkProcessResponse {
   chunk_index: number;
   session_id: string;
   cough_count: number;
   wheeze_windows: number;
   windows_processed: number;
+  probability_timeline: ProbabilityTimeline;
+  event_summary: EventSummary;
   detected_events: Array<{
     start_ms: number;
     end_ms: number;
@@ -38,10 +89,10 @@ export interface NightlySummary {
   wheeze_intensity_avg?: number;
   attribute_prevalence: {
     wet: number;
+    wheezing: number;
     stridor: number;
     choking: number;
     congestion: number;
-    selfreported_wheezing: number;
   };
   cough_events: Array<{
     start_ms: number;
@@ -51,6 +102,8 @@ export interface NightlySummary {
     quality_flag?: string;
     window_indices: number[];
   }>;
+  event_summary: EventSummary;
+  probability_timeline: ProbabilityTimeline;
   pattern_scores?: Array<{
     pattern_name: string;
     score: number;
@@ -294,4 +347,3 @@ export async function checkBackendHealth(): Promise<boolean> {
     return false;
   }
 }
-

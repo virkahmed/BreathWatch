@@ -1,257 +1,195 @@
+import React, { useMemo } from 'react';
+import { Box, Typography, Chip } from '@mui/material';
+import { LineChart } from '@mui/x-charts/LineChart';
 import { Colors } from '@/constants/theme';
-import { Box, Typography } from '@mui/material';
-import { BarItemIdentifier } from '@mui/x-charts';
-import { BarChart } from '@mui/x-charts/BarChart';
-import { labelMarkClasses } from '@mui/x-charts/ChartsLabel';
-import React from 'react';
+import { EventSummary, ProbabilityTimeline } from '@/services/api';
 
 interface CoughChartProps {
-  counts: number[];
-  labels: string[];
-  breakdown?: { wet: number; choking: number; congestion: number; stridor: number; wheezing: number }[]; // optional attribute distribution per day
+  timeline?: ProbabilityTimeline;
+  eventSummary?: EventSummary;
+  threshold?: number;
 }
 
-export const CoughChart: React.FC<CoughChartProps> = ({ counts, labels, breakdown }) => {
+export const CoughChart: React.FC<CoughChartProps> = ({
+  timeline,
+  eventSummary,
+  threshold = 0.5,
+}) => {
   const themeColors = Colors.dark;
+  const events = eventSummary?.events ?? [];
+  const hasTimeline = Boolean(timeline && timeline.times.length > 0);
 
-  // Track selected day
-  const [selectedIndex, setSelectedIndex] = React.useState<number | null>(null);
+  const { xData, yData, highlightData, thresholdLine } = useMemo(() => {
+    if (!timeline || timeline.times.length === 0) {
+      return {
+        xData: [] as number[],
+        yData: [] as number[],
+        highlightData: [] as (number | null)[],
+        thresholdLine: [] as number[],
+      };
+    }
 
-  const handleItemClick = (
-    _event: React.MouseEvent<SVGElement, MouseEvent>,
-    barItemIdentifier: BarItemIdentifier,
-  ) => {
-    console.log('Bar clicked, index:', barItemIdentifier.dataIndex);
-    console.log('Breakdown available:', breakdown);
-    console.log('Breakdown at index:', breakdown?.[barItemIdentifier.dataIndex]);
-    setSelectedIndex(barItemIdentifier.dataIndex);
-  };
+    const highlight = timeline.p_cough.map((value) => (value >= threshold ? value : null));
+
+    return {
+      xData: timeline.times,
+      yData: timeline.p_cough,
+      highlightData: highlight,
+      thresholdLine: timeline.p_cough.map(() => threshold),
+    };
+  }, [timeline, threshold]);
 
   return (
     <Box
       sx={{
         width: '100%',
-        minHeight: '100dvh',
-        pb: '20px',
-        mx: 'auto',
-        my: 0,
-        pt: '50px',
-        background: `linear-gradient(-45deg, ${themeColors.background} 25%, ${themeColors.backgroundGradient})`,
-        color: themeColors.text,
-        fontFamily: Colors.typography.fontFamily,
-        position: 'relative',
+        maxWidth: 'calc(100dvw - 40px)',
+        marginLeft: '20px',
+        my: '30px',
+        background: `linear-gradient(-45deg, ${themeColors.secondary} 25%, ${themeColors.tertiary})`,
+        borderRadius: '25px',
+        boxShadow: `3px 3px 0 ${themeColors.text}`,
+        padding: 3,
       }}
     >
       <Typography
-        variant="h3"
-        align="center"
-        sx={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 10,
-          py: 3,
-          mb: 3,
-          background: `linear-gradient(to bottom, ${themeColors.background} 50%, transparent)`,
-          color: '#ffffff',
-          fontWeight: 800,
-          fontSize: { xs: '2rem', sm: '2.5rem', md: '3rem' },
-          fontFamily: "'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif",
-          letterSpacing: '-0.02em',
-          textShadow: `0 0 20px rgba(255, 255, 255, 0.3)`,
-        }}
+        variant="h6"
+        sx={{ color: themeColors.text, fontWeight: 700, mb: 1 }}
       >
-        BreathWatch
+        Cough Timeline
       </Typography>
-
-      {/* Total cough count chart */}
-      <Box
-        sx={{
-          maxWidth: 'calc(100dvw - 40px)',
-          marginLeft: '20px',
-          my: '30px',
-          background: `linear-gradient(-45deg, ${themeColors.secondary} 25%, ${themeColors.tertiary})`,
-          borderRadius: '25px',
-          boxShadow: `3px 3px 0 ${themeColors.text}`,
-          padding: 0,
-        }}
+      <Typography
+        variant="body2"
+        sx={{ color: themeColors.text, opacity: 0.75, mb: 2 }}
       >
-        <BarChart
-          sx={{
-            height: '250px',
-            maxWidth: 'calc(100dvw - 40px)',
-            marginTop: '20px',
-          }}
+        {hasTimeline
+          ? `${timeline!.p_cough.length} tiles • stride ${timeline!.stride_seconds}s`
+          : 'Timeline will appear once the first chunk finishes processing.'}
+      </Typography>
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+        <ChipLegend color={themeColors.bright} label="Cough intensity" />
+        <ChipLegend color="#ff6b9f" label="Cough tracking" />
+        <ChipLegend color="rgba(255,255,255,0.6)" label="Cough threshold" outlined />
+      </Box>
+
+      {hasTimeline ? (
+        <LineChart
+          height={260}
           xAxis={[
             {
-              data: labels,
-              scaleType: 'band',
-              tickLabelStyle: { fill: themeColors.text },
-              labelStyle: { fill: themeColors.text },
+              data: xData,
+              label: '',
+              valueFormatter: (value) =>
+                value >= 60 ? `${(value / 60).toFixed(1)}m` : `${value.toFixed(0)}s`,
+              tickLabelStyle: { fill: '#ffffff' },
+              labelStyle: { fill: '#ffffff' },
               sx: {
-                '& .MuiChartsAxis-line': {
-                  stroke: themeColors.text,
-                },
-                '& .MuiChartsAxis-tick': {
-                  stroke: themeColors.text,
-                },
+                '& .MuiChartsAxis-line': { stroke: '#ffffff' },
+                '& .MuiChartsAxis-tick': { stroke: '#ffffff' },
               },
             },
           ]}
           yAxis={[
             {
-              tickLabelStyle: { fill: themeColors.text },
-              labelStyle: { fill: themeColors.text },
+              min: 0,
+              max: 1,
+              label: '',
+              tickLabelStyle: { fill: '#ffffff', opacity: 0.2 },
+              labelStyle: { fill: 'transparent' },
               sx: {
-                '& .MuiChartsAxis-line': {
-                  stroke: themeColors.text,
-                },
-                '& .MuiChartsAxis-tick': {
-                  stroke: themeColors.text,
-                },
+                '& .MuiChartsAxis-line': { stroke: 'rgba(255,255,255,0.2)' },
+                '& .MuiChartsAxis-tick': { stroke: 'transparent' },
               },
             },
           ]}
           series={[
             {
-              data: counts,
-              label: 'Coughs',
+              id: 'intensity',
+              data: yData,
+              label: 'Cough intensity',
               color: themeColors.bright,
+              showMark: false,
+              curve: 'linear',
+            },
+            {
+              id: 'events',
+              data: highlightData,
+              label: 'Cough tracking',
+              color: '#ff6b9f',
+              showMark: false,
+              curve: 'linear',
+              lineStyle: { lineWidth: 3 },
+            },
+            {
+              id: 'threshold',
+              data: thresholdLine,
+              label: 'Threshold',
+              color: 'rgba(255,255,255,0.25)',
+              showMark: false,
+              curve: 'linear',
+              lineStyle: { strokeDasharray: '6 6' },
             },
           ]}
-          spacing={0.3}
-          borderRadius={4}
-          onItemClick={handleItemClick}
-          grid={{ vertical: true, horizontal: true }}
           slotProps={{
+            legend: { hidden: true },
             tooltip: { trigger: 'none' },
-            legend: {
-              sx: {
-                color: themeColors.text,
-                [`.${labelMarkClasses.fill}`]: {
-                  fill: themeColors.text,
-                },
-              },
-            },
           }}
-          layout="vertical"
         />
-      </Box>
-      <Box
-        sx={{
-          maxWidth: 'calc(100dvw - 40px)',
-          marginLeft: '20px',
-          my: '30px',
-          background: `linear-gradient(-45deg, ${themeColors.secondary} 25%, ${themeColors.tertiary})`,
-          borderRadius: '25px',
-          boxShadow: `3px 3px 0 ${themeColors.text}`,
-          padding: 0,
-        }}
-      >
-        {/* Breakdown chart */}
-        <Box>
-          {selectedIndex === null ? (
-            <Typography variant="body1" align="center" sx={{ py: 10, color: themeColors.text, opacity: 0.6 }}>
-              Click a bar above to see attribute breakdown
-            </Typography>
-          ) : breakdown && breakdown.length > 0 && breakdown[selectedIndex] ? (
-            (() => {
-              console.log('Rendering breakdown chart, selectedIndex:', selectedIndex);
-              console.log('Breakdown data:', breakdown[selectedIndex]);
-              return (
-            <BarChart
-              height={200}
-              layout="horizontal"
-              xAxis={[
-                {
-                  tickLabelStyle: { fill: themeColors.text },
-                  labelStyle: { fill: themeColors.text },
-                  sx: {
-                    '& .MuiChartsAxis-line': {
-                      stroke: themeColors.text,
-                    },
-                    '& .MuiChartsAxis-tick': {
-                      stroke: themeColors.text,
-                    },
-                  },
-                },
-              ]}
-              yAxis={[
-                {
-                  data: ['Wet', 'Choking', 'Congestion', 'Stridor', 'Wheezing'],
-                  scaleType: 'band',
-                  tickLabelStyle: { fill: themeColors.text },
-                  labelStyle: { fill: themeColors.text },
-                  sx: {
-                    '& .MuiChartsAxis-line': {
-                      stroke: themeColors.text,
-                    },
-                    '& .MuiChartsAxis-tick': {
-                      stroke: themeColors.text,
-                    },
-                  },
-                },
-              ]}
-              series={[
-                {
-                  data: [
-                    breakdown[selectedIndex].wet,
-                    breakdown[selectedIndex].choking,
-                    breakdown[selectedIndex].congestion,
-                    breakdown[selectedIndex].stridor,
-                    breakdown[selectedIndex].wheezing,
-                  ],
-                  label: 'Attribute Prevalence (%)',
-                  color: themeColors.bright,
-                },
-              ]}
-              spacing={0.3}
-              grid={{ vertical: true, horizontal: true }}
-              slotProps={{
-                tooltip: { trigger: 'none' },
-                legend: {
-                  sx: {
-                    color: themeColors.text,
-                    [`.${labelMarkClasses.fill}`]: {
-                      fill: themeColors.text,
-                    },
-                  },
-                },
-              }}
-            />
-              );
-            })()
-          ) : (
-            <Typography variant="body1" align="center" sx={{ py: 10, color: themeColors.text }}>
-              No data available
-            </Typography>
-          )}
+      ) : (
+        <Box
+          sx={{
+            height: 200,
+            borderRadius: '16px',
+            border: `1px dashed rgba(255,255,255,0.3)`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Typography variant="body2" sx={{ color: themeColors.text, opacity: 0.7 }}>
+            Timeline will appear once the first chunk is processed.
+          </Typography>
         </Box>
-      </Box>
-      <Box
-        sx={{
-          maxWidth: 'calc(100dvw - 80px)',
-          marginLeft: '20px',
-          my: '30px',
-          background: `linear-gradient(-45deg, ${themeColors.secondary} 25%, ${themeColors.tertiary})`,
-          borderRadius: '25px',
-          boxShadow: `3px 3px 0 ${themeColors.text}`,
-          padding: '20px',
-        }}
-      >
-        <Typography sx={{ mb: '20px', color: themeColors.text, fontWeight: 600 }}>
-          You should know...
+      )}
+
+      <Box sx={{ mt: 3 }}>
+        <Typography
+          variant="subtitle1"
+          sx={{ color: themeColors.text, fontWeight: 600, mb: 1 }}
+        >
+          Detected Cough Episodes ({eventSummary?.num_events ?? 0})
         </Typography>
-        <Typography sx={{ color: themeColors.text }}>
-          Wet coughs, also known as productive coughs, can indicate that the body is trying to clear
-          mucus or phlegm from the airways, but they may also signal an underlying infection or
-          respiratory issue. While an occasional wet cough can result from a mild cold, persistent
-          or worsening symptoms could point to bronchitis, pneumonia, or other conditions that
-          require medical attention. The presence of discolored or bloody mucus, chest pain, or
-          shortness of breath can further increase concern. Ignoring a wet cough may allow
-          infections to spread or worsen, so monitoring its duration and severity is important for
-          protecting lung health.
-        </Typography>
+        {events.length === 0 ? (
+          <Typography variant="body2" sx={{ color: themeColors.text, opacity: 0.7 }}>
+            No cough-like events exceeded the baseline yet. Keep recording to capture more data.
+          </Typography>
+        ) : (
+          <Typography variant="body2" sx={{ color: themeColors.text, opacity: 0.7 }}>
+            Tap the Statistics tab for detailed attributes per cough.
+          </Typography>
+        )}
       </Box>
     </Box>
   );
 };
+
+interface ChipLegendProps {
+  color: string;
+  label: string;
+  outlined?: boolean;
+}
+
+const ChipLegend: React.FC<ChipLegendProps> = ({ color, label, outlined = false }) => (
+  <Chip
+    label={label}
+    size="small"
+    sx={{
+      backgroundColor: outlined ? 'transparent' : color,
+      border: outlined ? `1px solid ${color}` : 'none',
+      '& .MuiChip-label': {
+        color: '#ffffff',
+        fontWeight: 600,
+      },
+    }}
+  />
+);

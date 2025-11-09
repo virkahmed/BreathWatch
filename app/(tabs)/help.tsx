@@ -1,12 +1,15 @@
 import { Colors } from '@/constants/theme';
-import { Box, Typography, Paper, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
+import { Box, Typography, Paper, Accordion, AccordionSummary, AccordionDetails, IconButton } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import HelpIcon from '@mui/icons-material/Help';
 import InfoIcon from '@mui/icons-material/Info';
 import QuestionAnswerIcon from '@mui/icons-material/QuestionAnswer';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { useRouter } from 'expo-router';
 
 export default function HelpPage() {
   const themeColors = Colors.dark;
+  const router = useRouter();
 
   const faqs = [
     {
@@ -60,7 +63,10 @@ export default function HelpPage() {
         p: 3,
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+        <IconButton onClick={() => router.replace('/')} sx={{ color: themeColors.text }}>
+          <ArrowBackIcon />
+        </IconButton>
         <HelpIcon sx={{ fontSize: 40, color: themeColors.bright }} />
         <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.text }}>
           Help & FAQ
@@ -188,4 +194,3 @@ export default function HelpPage() {
     </Box>
   );
 }
-
