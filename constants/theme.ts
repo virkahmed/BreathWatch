@@ -18,7 +18,9 @@ export const Colors = {
   dark: {
     text: '#e9ecef',
     background: '#231C35',
+    backgroundGradient: '#242039',
     secondary: '#2A2B47',
+    tertiary: '#6E5774',
     bright: '#e9ecef',
     tint: tintColorLight,
     icon: '#687076',

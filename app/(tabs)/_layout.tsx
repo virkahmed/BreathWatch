@@ -1,8 +1,6 @@
 import { Colors } from '@/constants/theme';
-import HomeIcon from '@mui/icons-material/Home';
-import InfoIcon from '@mui/icons-material/Info';
 import MicIcon from '@mui/icons-material/Mic';
-import { BottomNavigation, BottomNavigationAction, Box, Fab } from '@mui/material';
+import { Box, Fab } from '@mui/material';
 import { Slot, usePathname, useRouter, useSegments } from 'expo-router';
 import React from 'react';
 
@@ -62,17 +60,17 @@ export default function TabLayout() {
         style={{
           position: 'fixed',
           bottom: 40,
-          left: '50%',
-          transform: 'translateX(-50%)',
+          right: 40,
+          // transform: 'translateX(-50%)',
           zIndex: 1,
-          backgroundColor: themeColors.tint,
+          backgroundColor: themeColors.text,
           color: themeColors.background,
         }}
       >
         <MicIcon />
       </Fab>
 
-      {/* Bottom Navigation */}
+      {/* Bottom Navigation
       <BottomNavigation
         value={currentTab}
         onChange={handleChange}
@@ -98,7 +96,7 @@ export default function TabLayout() {
           sx={{ color: currentTab === TabName.About ? themeColors.tint : 'gray' }}
           onClick={() => router.replace('/about')}
         />
-      </BottomNavigation>
+      </BottomNavigation> */}
     </Box>
   );
 }

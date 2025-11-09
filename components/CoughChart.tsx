@@ -29,11 +29,12 @@ export const CoughChart: React.FC<CoughChartProps> = ({ counts, labels, breakdow
     <Box
       sx={{
         width: '100%',
-        height: '100dvh',
+        minHeight: '100dvh',
+        pb: '20px',
         mx: 'auto',
         my: 0,
         pt: '50px',
-        backgroundColor: themeColors.background,
+        background: `linear-gradient(-45deg, ${themeColors.background} 25%, ${themeColors.backgroundGradient})`,
         color: themeColors.text,
         fontFamily: Colors.typography.fontFamily,
         position: 'relative',
@@ -48,10 +49,9 @@ export const CoughChart: React.FC<CoughChartProps> = ({ counts, labels, breakdow
           zIndex: 10,
           py: 2,
           mb: 3,
-          background: `linear-gradient(to bottom, ${themeColors.background} 90%, transparent)`,
+          background: `linear-gradient(to bottom, ${themeColors.background} 50%, transparent)`,
           color: themeColors.text,
           fontWeight: 600,
-          backdropFilter: 'blur(4px)',
         }}
       >
         Nightly Cough Count
@@ -62,10 +62,10 @@ export const CoughChart: React.FC<CoughChartProps> = ({ counts, labels, breakdow
         sx={{
           maxWidth: 'calc(100dvw - 40px)',
           marginLeft: '20px',
-          marginTop: '20px',
-          backgroundColor: themeColors.secondary,
+          my: '20px',
+          background: `linear-gradient(-45deg, ${themeColors.secondary} 25%, ${themeColors.tertiary})`,
           borderRadius: '25px',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+          boxShadow: `3px 3px 0 ${themeColors.text}`,
           padding: 0,
         }}
       >
@@ -134,10 +134,10 @@ export const CoughChart: React.FC<CoughChartProps> = ({ counts, labels, breakdow
         sx={{
           maxWidth: 'calc(100dvw - 40px)',
           marginLeft: '20px',
-          marginTop: '20px',
-          backgroundColor: themeColors.secondary,
+          my: '20px',
+          background: `linear-gradient(-45deg, ${themeColors.secondary} 25%, ${themeColors.tertiary})`,
           borderRadius: '25px',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+          boxShadow: `3px 3px 0 ${themeColors.text}`,
           padding: 0,
         }}
       >
@@ -213,10 +213,10 @@ export const CoughChart: React.FC<CoughChartProps> = ({ counts, labels, breakdow
         sx={{
           maxWidth: 'calc(100dvw - 40px)',
           marginLeft: '20px',
-          marginTop: '20px',
-          backgroundColor: themeColors.secondary,
+          my: '20px',
+          background: `linear-gradient(-45deg, ${themeColors.secondary} 25%, ${themeColors.tertiary})`,
           borderRadius: '25px',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+          boxShadow: `3px 3px 0 ${themeColors.text}`,
           padding: 0,
         }}
       >
