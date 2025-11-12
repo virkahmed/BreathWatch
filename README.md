@@ -1,50 +1,53 @@
-# Welcome to your Expo app 👋
+🎤 BreathWatch – AI-Powered Sleep Respiratory Monitor
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Hi everyone, we’re excited to introduce BreathWatch — a smart respiratory monitoring app that helps people track and understand their nighttime breathing health using AI-powered audio analysis.
 
-## Get started
+🌙 The Problem
 
-1. Install dependencies
+Millions of people suffer from undiagnosed cough, asthma, and sleep-related breathing disorders. Traditional monitoring requires bulky medical devices or hospital visits.
+We wanted to make respiratory health tracking as easy as pressing record on your phone.
 
-   ```bash
-   npm install
-   ```
+💡 Our Solution: BreathWatch
 
-2. Start the app
+BreathWatch uses your phone’s microphone to record audio overnight, detect coughs and wheezes in real time, and generate a morning health summary — all automatically.
 
-   ```bash
-   npx expo start
-   ```
+Here’s how it works:
 
-In the output, you'll find options to open the app in a
+The frontend is built with React Native and Expo, so it runs seamlessly on both mobile and web.
+It records audio using expo-av or the Web Audio API, converts it into clean 16 kHz WAV chunks, and uploads them live.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+The backend, built with FastAPI and PyTorch, receives each chunk, cleans the sound with librosa and noisereduce, and runs our CoughMultitaskCNN and WheezeDetector models.
+It identifies coughs, classifies their type — like wet, stridor, or congestion — and detects wheezing episodes.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+When recording ends, the backend aggregates everything into a Nightly Summary:
 
-## Get a fresh project
+Coughs per hour
 
-When you're ready, run:
+Wheeze time percentage
 
-```bash
-npm run reset-project
-```
+Bout lengths and frequency
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Attribute breakdowns
 
-## Learn more
+Optional AI interpretation using Dedalus for health insights
 
-To learn more about developing your project with Expo, look at the following resources:
+📊 The Experience
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+On the dashboard, users see real-time cough counts while recording.
+In the morning, they get visual analytics — bar charts, pattern scores, and AI explanations — that help them understand trends like “possible asthma-like patterns” or “COPD-like tendencies.”
 
-## Join the community
+⚙️ Tech Stack Summary
 
-Join our community of developers creating universal apps.
+Frontend: Expo + React Native, MUI Charts, TypeScript
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Backend: FastAPI, Librosa, PyTorch, Dedalus AI
+
+AI Models: CoughMultitaskCNN + WheezeDetector
+
+Everything runs locally — no special hardware, just your phone.
+
+🚀 Impact
+
+BreathWatch transforms ordinary sleep into actionable respiratory data, making early detection of chronic conditions accessible, affordable, and private.
+
+In short — we’re bringing clinical-grade respiratory insight to everyone, right from their pillow.
